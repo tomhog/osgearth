@@ -57,6 +57,78 @@ IF (OSGEARTH_EMBED_GIT_SHA)
   get_git_head_revision(GIT_REFSPEC OSGEARTH_GIT_SHA1)
 ENDIF (OSGEARTH_EMBED_GIT_SHA)
 
+## Option to enable Android build using AndroidNDK
+OPTION(OSG_BUILD_PLATFORM_ANDROID OFF)
+IF(OSG_BUILD_PLATFORM_ANDROID)
+
+    CMAKE_MINIMUM_REQUIRED(VERSION 2.8.0 FATAL_ERROR)
+
+    INCLUDE(OsgEarthAndroidMacroUtils)
+    SET(ANDROID TRUE)
+    IF(NOT ANDROID_PLATFORM)
+        MESSAGE("Warning Android Platform version NOT defined, Default selected version: 5")
+        SET(ANDROID_PLATFORM 5)
+    ENDIF()
+    IF(NOT ANDROID_ABI)
+        MESSAGE("Warning Android ABI version NOT defined, Default selection: armeabi armeabi-v7a")
+        SET(ANDROID_ABI "armeabi armeabi-v7a")
+    ENDIF()
+    IF(NOT ANDROID_STL)
+        MESSAGE("Warning Android STL NOT defined, Default selection: gnustl_static")
+        SET(ANDROID_STL "gnustl_static")
+    ENDIF()
+    IF(ANDROID_DEBUG)
+        MESSAGE("Warning Android Build is in debug mode")
+        SET(ANDROID_RELEASE_OPTIM "debug")
+    ELSE()
+        MESSAGE("Warning Android Build is in release mode")
+        SET(ANDROID_RELEASE_OPTIM "release")
+    ENDIF()
+    IF(ANDROID_NEON)
+        MESSAGE("Warning Android NEON optimizations enabled, this will not be available on all armeabi-v7a devices ie. Tegra2")
+        SET(ANDROID_OPTIM_NEON true)
+    ELSE()
+        SET(ANDROID_OPTIM_NEON false)
+    ENDIF()
+    IF(ANDROID_ARM32)
+        MESSAGE("Warning ARM 32bit instruction set will be used")
+        SET(ANDROID_OPTIM_ARM32 true)
+    ELSE()
+        SET(ANDROID_OPTIM_ARM32 false)
+    ENDIF()
+
+    FIND_PACKAGE(AndroidNDK REQUIRED)
+
+    SET(OSG_ANDROID_TEMPLATES "${CMAKE_SOURCE_DIR}/PlatformSpecifics/Android")
+
+    SET(J  "4" CACHE STRING "how many processes for make -j <J>")
+
+    ADD_CUSTOM_COMMAND(
+        OUTPUT    Android-OpenSceneGraph
+        DEPENDS   ${CMAKE_BINARY_DIR}/Android.mk
+        COMMAND   "${ANDROID_NDK}/ndk-build"
+        ARGS      --directory=${CMAKE_BINARY_DIR} NDK_APPLICATION_MK=Application.mk -j${J} NDK_LOG=1
+    )
+
+    ADD_CUSTOM_TARGET(ndk ALL echo
+          DEPENDS Android-OpenSceneGraph
+    )
+    install(DIRECTORY include/ DESTINATION include/
+        PATTERN ".svn" EXCLUDE
+    )
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/include/ DESTINATION include/
+    )
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/obj/ DESTINATION obj/
+        PATTERN ".svn" EXCLUDE
+        PATTERN "objs" EXCLUDE
+    )
+
+    ADD_DEFINITIONS(-DANDROID)
+
+ENDIF()
+
+IF(APPLE AND NOT ANDROID)
+
 # IPHONE_PORT@tom
 # Trying to get CMake to generate an XCode IPhone project, current efforts are to get iphoneos sdk 3.1 working
 # Added option which needs manually setting to select the IPhone SDK for building. We can only have one of the below 
@@ -82,7 +154,9 @@ IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)
             SET (IPHONE_DEVROOT "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer")
             SET (IPHONE_SDKROOT "${IPHONE_DEVROOT}/SDKs/iPhoneSimulator${IPHONE_SDKVER}.sdk")
         ENDIF()
-ENDIF ()
+ENDIF()
+
+ENDIF(APPLE AND NOT ANDROID)
 # IPHONE_PORT@tom
 
 # check if STLport is required
@@ -156,20 +230,20 @@ IF (ZLIB_FOUND)
     FIND_PACKAGE(MiniZip)
 ENDIF (ZLIB_FOUND)
 
-IF(UNIX)
+IF(UNIX AND NOT ANDROID)
     # Not sure what this will do on Cygwin and Msys
     # Also, remember OS X X11 is a user installed option so it may not exist.
     FIND_PACKAGE(X11)
     # Some Unicies need explicit linkage to the Math library or the build fails.
     FIND_LIBRARY(MATH_LIBRARY m)
-ENDIF(UNIX)
+ENDIF(UNIX AND NOT ANDROID)
 
 # Common global definitions
 #ADD_DEFINITIONS(-D)
 # Platform specific definitions
 
 
-IF(WIN32)
+IF(WIN32 AND NOT ANDROID)
   IF(MSVC)
         # This option is to enable the /MP switch for Visual Studio 2005 and above compilers
         OPTION(WIN32_USE_MP "Set to ON to build osgEarth with the /MP option (Visual Studio 2005 and above)." OFF)
@@ -187,7 +261,7 @@ IF(WIN32)
         ADD_DEFINITIONS(-D_SCL_SECURE_NO_WARNINGS)
         ADD_DEFINITIONS(-D_CRT_SECURE_NO_DEPRECATE)
     ENDIF(MSVC)
-ENDIF(WIN32)
+ENDIF(WIN32 AND NOT ANDROID)
 
 ########################################################################################################
 ##### these were settings located in SetupCommon.cmake used in Luigi builds.... find out what are useful
@@ -326,7 +400,7 @@ ADD_SUBDIRECTORY(src)
 
 # Set defaults for Universal Binaries. We want 32-bit Intel/PPC on 10.4
 # and 32/64-bit Intel/PPC on >= 10.5. Anything <= 10.3 doesn't support.
-IF(APPLE)
+IF(APPLE AND NOT ANDROID)
 
         #Here we check if the user specified IPhone SDK
     IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)
@@ -388,7 +462,7 @@ IF(APPLE)
 
     ENDIF()
 
-ENDIF(APPLE)
+ENDIF(APPLE AND NOT ANDROID)
 
 
 # This needs to be run very last so other parts of the scripts can take
@@ -427,3 +501,10 @@ SET(CPACK_RESOURCE_FILE_LICENSE ${PROJECT_SOURCE_DIR}/LICENSE.txt )
 SET(CPACK_MONOLITHIC_INSTALL    1 )                                        # create a single, monolithic package.
     
 INCLUDE(CPack)
+
+IF(ANDROID)
+    message(STATUS "Creating Android Makefile Master files" )
+    configure_file("${OSG_ANDROID_TEMPLATES}/Android.mk.master.in" "${CMAKE_BINARY_DIR}/Android.mk")
+    configure_file("${OSG_ANDROID_TEMPLATES}/Application.mk.master.in" "${CMAKE_BINARY_DIR}/Application.mk")
+    configure_file("${OSG_ANDROID_TEMPLATES}/AndroidManifest.xml.master.in" "${CMAKE_BINARY_DIR}/AndroidManifest.xml")
+ENDIF(ANDROID)

@@ -135,6 +135,51 @@ ENDMACRO(LINK_CORELIB_DEFAULT CORELIB_NAME)
 
 
 #######################################################################################################
+#  macro for common setup of libraries it expect some variables to be set:
+#  either within the local CMakeLists or higher in hierarchy
+#  LIB_NAME  is the name of the target library
+#  TARGET_SRC  are the sources of the target
+#  TARGET_H are the eventual headers of the target
+#  TARGET_H_NO_MODULE_INSTALL are headers that belong to target but shouldn't get installed by the ModuleInstall script
+#  TARGET_LIBRARIES are the libraries to link to that are internal to the project and have d suffix for debug
+#  TARGET_EXTERNAL_LIBRARIES are external libraries and are not differentiated with d suffix
+#  TARGET_LABEL is the label IDE should show up for targets
+##########################################################################################################
+
+MACRO(SETUP_LIBRARY LIB_NAME)
+    IF(ANDROID)
+        SETUP_ANDROID_LIBRARY(${LIB_NAME}) 
+    ELSE()
+        SET(TARGET_NAME ${LIB_NAME} )
+        SET(TARGET_TARGETNAME ${LIB_NAME} )
+        ADD_LIBRARY(${LIB_NAME}
+            ${OSGEARTH_USER_DEFINED_DYNAMIC_OR_STATIC}
+            ${TARGET_H}
+            ${TARGET_H_NO_MODULE_INSTALL}
+            ${TARGET_SRC}
+        )
+        SET_TARGET_PROPERTIES(${LIB_NAME} PROPERTIES FOLDER "osgEarth Core")
+        IF(TARGET_LABEL)
+            SET_TARGET_PROPERTIES(${TARGET_TARGETNAME} PROPERTIES PROJECT_LABEL "${TARGET_LABEL}")
+        ENDIF(TARGET_LABEL)
+    
+        IF(TARGET_LIBRARIES)
+            LINK_INTERNAL(${LIB_NAME} ${TARGET_LIBRARIES})
+        ENDIF()
+        IF(TARGET_EXTERNAL_LIBRARIES)
+            LINK_EXTERNAL(${LIB_NAME} ${TARGET_EXTERNAL_LIBRARIES})
+        ENDIF()
+        IF(TARGET_LIBRARIES_VARS)
+            LINK_WITH_VARIABLES(${LIB_NAME} ${TARGET_LIBRARIES_VARS})
+        ENDIF(TARGET_LIBRARIES_VARS)
+        LINK_CORELIB_DEFAULT(${LIB_NAME})
+    
+    ENDIF()
+    INCLUDE(ModuleInstall OPTIONAL)
+ENDMACRO(SETUP_LIBRARY LIB_NAME)
+
+
+#######################################################################################################
 #  macro for common setup of plugins, examples and applications it expect some variables to be set:
 #  either within the local CMakeLists or higher in hierarchy
 #  TARGET_NAME is the name of the folder and of the actually .exe or .so or .dll
@@ -189,58 +234,61 @@ ENDMACRO(SETUP_LINK_LIBRARIES)
 
 MACRO(SETUP_PLUGIN PLUGIN_NAME)
 
-    SET(TARGET_NAME ${PLUGIN_NAME} )
+    IF(ANDROID)
+        SETUP_ANDROID_LIBRARY(${TARGET_DEFAULT_PREFIX}${PLUGIN_NAME}) 
+    ELSE()
+        SET(TARGET_NAME ${PLUGIN_NAME} )
 
-    #MESSAGE("in -->SETUP_PLUGIN<-- ${TARGET_NAME}-->${TARGET_SRC} <--> ${TARGET_H}<--")
-    
-    SOURCE_GROUP( "Header Files" FILES ${TARGET_H} )
+        #MESSAGE("in -->SETUP_PLUGIN<-- ${TARGET_NAME}-->${TARGET_SRC} <--> ${TARGET_H}<--")
+        
+        SOURCE_GROUP( "Header Files" FILES ${TARGET_H} )
 
-    ## we have set up the target label and targetname by taking into account global prfix (osgdb_)
+        ## we have set up the target label and targetname by taking into account global prfix (osgdb_)
 
-    IF(NOT TARGET_TARGETNAME)
-            SET(TARGET_TARGETNAME "${TARGET_DEFAULT_PREFIX}${TARGET_NAME}")
-    ENDIF(NOT TARGET_TARGETNAME)
-    IF(NOT TARGET_LABEL)
-            SET(TARGET_LABEL "${TARGET_DEFAULT_LABEL_PREFIX} ${TARGET_NAME}")
-    ENDIF(NOT TARGET_LABEL)
+        IF(NOT TARGET_TARGETNAME)
+                SET(TARGET_TARGETNAME "${TARGET_DEFAULT_PREFIX}${TARGET_NAME}")
+        ENDIF(NOT TARGET_TARGETNAME)
+        IF(NOT TARGET_LABEL)
+                SET(TARGET_LABEL "${TARGET_DEFAULT_LABEL_PREFIX} ${TARGET_NAME}")
+        ENDIF(NOT TARGET_LABEL)
 
-# here we use the command to generate the library
+    # here we use the command to generate the library
 
-    IF   (DYNAMIC_OSGEARTH)
-        ADD_LIBRARY(${TARGET_TARGETNAME} MODULE ${TARGET_SRC} ${TARGET_H})
-    ELSE (DYNAMIC_OSGEARTH)
-        ADD_LIBRARY(${TARGET_TARGETNAME} STATIC ${TARGET_SRC} ${TARGET_H})
-    ENDIF(DYNAMIC_OSGEARTH)
+        IF   (DYNAMIC_OSGEARTH)
+            ADD_LIBRARY(${TARGET_TARGETNAME} MODULE ${TARGET_SRC} ${TARGET_H})
+        ELSE (DYNAMIC_OSGEARTH)
+            ADD_LIBRARY(${TARGET_TARGETNAME} STATIC ${TARGET_SRC} ${TARGET_H})
+        ENDIF(DYNAMIC_OSGEARTH)
 
-    #not sure if needed, but for plugins only msvc need the d suffix
-    IF(NOT MSVC)
-      IF(NOT UNIX)
-           SET_TARGET_PROPERTIES(${TARGET_TARGETNAME} PROPERTIES DEBUG_POSTFIX "")
-      ENDIF(NOT UNIX)
-    ENDIF(NOT MSVC)
-    SET_TARGET_PROPERTIES(${TARGET_TARGETNAME} PROPERTIES PROJECT_LABEL "${TARGET_LABEL}")
+        #not sure if needed, but for plugins only msvc need the d suffix
+        IF(NOT MSVC)
+          IF(NOT UNIX)
+               SET_TARGET_PROPERTIES(${TARGET_TARGETNAME} PROPERTIES DEBUG_POSTFIX "")
+          ENDIF(NOT UNIX)
+        ENDIF(NOT MSVC)
+        SET_TARGET_PROPERTIES(${TARGET_TARGETNAME} PROPERTIES PROJECT_LABEL "${TARGET_LABEL}")
 
-    SETUP_LINK_LIBRARIES()
+        SETUP_LINK_LIBRARIES()
 
-#the installation path are differentiated for win32 that install in bib versus other architecture that install in lib${LIB_POSTFIX}/${VPB_PLUGINS}
-    IF(WIN32)
-        INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION bin ARCHIVE DESTINATION lib/${OSG_PLUGINS} LIBRARY DESTINATION bin/${OSG_PLUGINS} )
-	    
-		#Install to the OSG_DIR as well
-		IF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
-		  INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION ${OSG_DIR}/bin/${OSG_PLUGINS} LIBRARY DESTINATION ${OSG_DIR}/bin/${OSG_PLUGINS} )
-		ENDIF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
-		
-    ELSE(WIN32)
-        INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION bin ARCHIVE DESTINATION lib${LIB_POSTFIX}/${OSG_PLUGINS} LIBRARY DESTINATION lib${LIB_POSTFIX}/${OSG_PLUGINS} )
+    #the installation path are differentiated for win32 that install in bib versus other architecture that install in lib${LIB_POSTFIX}/${VPB_PLUGINS}
+        IF(WIN32)
+            INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION bin ARCHIVE DESTINATION lib/${OSG_PLUGINS} LIBRARY DESTINATION bin/${OSG_PLUGINS} )
+            
+            #Install to the OSG_DIR as well
+            IF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
+              INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION ${OSG_DIR}/bin/${OSG_PLUGINS} LIBRARY DESTINATION ${OSG_DIR}/bin/${OSG_PLUGINS} )
+            ENDIF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
+            
+        ELSE(WIN32)
+            INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION bin ARCHIVE DESTINATION lib${LIB_POSTFIX}/${OSG_PLUGINS} LIBRARY DESTINATION lib${LIB_POSTFIX}/${OSG_PLUGINS} )
 
-		#Install to the OSG_DIR as well
-		IF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
-		  INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION ${OSG_DIR}/bin LIBRARY DESTINATION lib${LIB_POSTFIX}/bin)
-		ENDIF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
-		
-    ENDIF(WIN32)
-    
+            #Install to the OSG_DIR as well
+            IF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
+              INSTALL(TARGETS ${TARGET_TARGETNAME} RUNTIME DESTINATION ${OSG_DIR}/bin LIBRARY DESTINATION lib${LIB_POSTFIX}/bin)
+            ENDIF(OSGEARTH_INSTALL_TO_OSG_DIR AND OSG_DIR)
+            
+        ENDIF(WIN32)
+    ENDIF()
 #finally, set up the solution folder -gw
     SET_PROPERTY(TARGET ${TARGET_TARGETNAME} PROPERTY FOLDER "Plugins")    
     
