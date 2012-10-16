@@ -38,6 +38,8 @@ unsigned osgEarth::Threading::getCurrentThreadId()
   return (unsigned)::GetCurrentThreadId();
 #elif __APPLE__
   return ::syscall(SYS_thread_selfid);
+#elif ANDROID
+  return (unsigned)::gettid();
 #else
   return (unsigned)::syscall(SYS_gettid);
 #endif
