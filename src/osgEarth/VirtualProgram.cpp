@@ -137,7 +137,7 @@ namespace
     bool s_mergeShaders = false;
 #endif
 
-    bool s_dumpShaders = false;        // debugging
+    bool s_dumpShaders = true;        // debugging
 
     /** A device that lets us do a const search on the State's attribute map. OSG does not yet
         have a const way to do this. It has getAttributeVec() but that is non-const (it creates

@@ -132,7 +132,7 @@ namespace
 
 //------------------------------------------------------------------------
 
-namespace State_Utils
+namespace osgEarth_State_Utils
 {
     // Code borrowed from osg::State.cpp
     bool replace(std::string& str, const std::string& original_phrase, const std::string& new_phrase)
@@ -197,7 +197,7 @@ ShaderPreProcessor::run(osg::Shader* shader)
 
         for( int i=0; i<maxLights; ++i )
         {
-            State_Utils::replaceAndInsertDeclaration(
+            osgEarth_State_Utils::replaceAndInsertDeclaration(
                 source, declPos,
                 Stringify() << "gl_LightSource[" << i << "]",
                 Stringify() << "osg_LightSource" << i,
@@ -205,7 +205,7 @@ ShaderPreProcessor::run(osg::Shader* shader)
                     << osg_LightSourceParameters::glslDefinition() << "\n"
                     << "uniform osg_LightSourceParameters " );
 
-            State_Utils::replaceAndInsertDeclaration(
+            osgEarth_State_Utils::replaceAndInsertDeclaration(
                 source, declPos,
                 Stringify() << "gl_FrontLightProduct[" << i << "]", 
                 Stringify() << "osg_FrontLightProduct" << i,

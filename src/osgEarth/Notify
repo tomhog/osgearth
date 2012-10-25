@@ -44,6 +44,14 @@ namespace osgEarth
     extern OSGEARTH_EXPORT std::ostream& notify(const osg::NotifySeverity severity);
 
     inline std::ostream& notify(void) { return osgEarth::notify(osg::INFO); }
+
+
+    //
+    extern OSGEARTH_EXPORT void setNotifyHandler(osg::NotifyHandler *handler);
+
+    //
+    extern OSGEARTH_EXPORT osg::NotifyHandler *getNotifyHandler();
+
 }
 
 #define OE_NOTIFY( X,Y ) if(osgEarth::isNotifyEnabled( X )) osgEarth::notify( X ) << Y
