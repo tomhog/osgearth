@@ -12,7 +12,7 @@ FOREACH( lib
 
     ADD_SUBDIRECTORY(${lib})
     
-    SET_PROPERTY(TARGET ${lib} PROPERTY FOLDER "Libs")
+    #SET_PROPERTY(TARGET ${lib} PROPERTY FOLDER "Libs")
 
 ENDFOREACH( lib )
 
