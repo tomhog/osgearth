@@ -37,11 +37,19 @@
 
 class OsgMainApp{
 private:
+    
     osg::ref_ptr<osgViewer::Viewer> _viewer;
+    int _bufferWidth;
+    int _bufferHeight;
     bool _initialized;
     
     OsgAndroidNotifyHandler *_notifyHandler;
 
+    //events for each touch phase, these are cleared each frame
+    osg::ref_ptr<osgGA::GUIEventAdapter> _frameTouchBeganEvents;
+    osg::ref_ptr<osgGA::GUIEventAdapter> _frameTouchMovedEvents;
+    osg::ref_ptr<osgGA::GUIEventAdapter> _frameTouchEndedEvents;
+    
 public:
     OsgMainApp();
     ~OsgMainApp();
@@ -51,11 +59,12 @@ public:
     //Draw
     void draw();
     //Events
-    void mouseButtonPressEvent(float x,float y,int button);
-    void mouseButtonReleaseEvent(float x,float y,int button);
-    void mouseMoveEvent(float x,float y);
+    void touchBeganEvent(int touchid,float x,float y);
+    void touchMovedEvent(int touchid,float x,float y);
+    void touchEndedEvent(int touchid,float x,float y,int tapcount=0);
     void keyboardDown(int key);
     void keyboardUp(int key);
+    void clearEventQueue();
 
 };
 

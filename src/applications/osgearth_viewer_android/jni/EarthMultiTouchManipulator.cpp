@@ -73,7 +73,7 @@ osgGA::GUIEventAdapter* EarthMultiTouchManipulator::handleMultiTouchDrag(osgGA::
     }else if(fabs(gap_last - gap_now) >= zoom_threshold && dotNow >= 0.3f){// && _gestureState != PINCHING){
     
         _gestureState = TWO_DRAGING;
-        OSG_ALWAYS << "two drag" << std::endl;
+        //OSG_ALWAYS << "two drag" << std::endl;
         // drag gesture
         osgGA::GUIEventAdapter* dragAdpt = new osgGA::GUIEventAdapter(ea);
         dragAdpt->setButtonMask(osgGA::GUIEventAdapter::MIDDLE_MOUSE_BUTTON);

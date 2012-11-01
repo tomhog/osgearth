@@ -47,6 +47,7 @@ LOCAL_LDFLAGS   := -L $(OSGEARTH_LIBDIR) \
 -losgdb_osgearth_yahoo \
 -losgdb_osgearth_osg \
 -losgdb_osgearth_engine_osgterrain \
+-losgdb_osgearth_engine_quadtree \
 -losgdb_osgearth_feature_wfs \
 -losgdb_osgearth_feature_tfs \
 -losgdb_osgearth_tms \
