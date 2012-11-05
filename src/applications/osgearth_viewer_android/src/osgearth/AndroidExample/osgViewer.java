@@ -137,7 +137,6 @@ public class osgViewer extends Activity implements View.OnTouchListener, View.On
     		    	}
     		    }
     			for(int i=0; i<n_points; i++){
-    			    Log.d(TAG,  "y: " + event.getY(i));
     				int touchID = event.getPointerId(i);
     				osgNativeLib.touchMovedEvent(touchID, event.getX(i), event.getY(i));
     			}
