@@ -348,7 +348,6 @@ EarthManipulator::Settings::bindScroll(ActionType action, int scrolling_motion,
         Action( action, options ) );
 }
 
-
 void
 EarthManipulator::Settings::bindPinch(ActionType action, const ActionOptions& options)
 {
@@ -532,8 +531,6 @@ EarthManipulator::configureDefaultSettings()
     // map multi-touch pinch to a discrete zoom
     options.clear();
     _settings->bindPinch( ACTION_ZOOM, options );
-
-    options.clear();
     _settings->bindTwist( ACTION_ROTATE, options );
     _settings->bindMultiDrag( ACTION_ROTATE, options );
 
@@ -1441,6 +1438,7 @@ EarthManipulator::handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapt
         }
     }
 
+<<<<<<< HEAD
 
     if ( ea.isMultiTouchEvent() )
     {
@@ -1521,13 +1519,86 @@ EarthManipulator::handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapt
                     _throw_dy = fabs(_dy) > 0.01 ? _dy : 0.0;
                     
                     if (_settings->getThrowingEnabled() && ( time_s_now - _time_s_last_event < 0.05 ) && (_throw_dx != 0.0 || _throw_dy != 0.0))
+=======
+    if ( ea.isMultiTouchEvent() )
+    {
+        // not a mouse event; clear the mouse queue.
+        resetMouse( aa );
+
+        switch( ea.getEventType() )
+        {
+        case osgGA::GUIEventAdapter::PUSH:
+        case osgGA::GUIEventAdapter::RELEASE:
+        case osgGA::GUIEventAdapter::DRAG:
+            // queue up a touch event set and figure out the current state:
+            addTouchEvents(ea);
+            TouchEvents te;
+            if ( parseTouchEvents(te) )
+            {
+                for( TouchEvents::iterator i = te.begin(); i != te.end(); ++i )
+                {
+                    Action action = _settings->getAction(i->_eventType, 0, 0);
+                    if ( handleMultiTouchAction(action, *i, view) )
+>>>>>>> EarthManipulator: started multitouch support
                     {
                         _thrown = true;
                         aa.requestRedraw();
+<<<<<<< HEAD
                         aa.requestContinuousUpdate( true );
                     }
                     else if ( isMouseClick( &ea ) )
                     {
+=======
+                    }
+                }
+                handled = true;
+            }
+            break;
+        }
+    }
+
+    else
+    {
+        // not a touch event; clear the touch queue.
+        _touchPointQueue.clear();
+
+        switch( ea.getEventType() )
+        {
+            case osgGA::GUIEventAdapter::PUSH:
+                resetMouse( aa );
+                addMouseEvent( ea );
+                _mouse_down_event = &ea;
+                aa.requestRedraw();
+                handled = true;
+                break;       
+            
+            case osgGA::GUIEventAdapter::RELEASE:
+
+                if ( _continuous )
+                {
+                    // bail out of continuous mode if necessary:
+                    _continuous = false;
+                    aa.requestContinuousUpdate( false );
+                }
+                else
+                {
+    #if 0 // disabled - not implemented
+                    // check for a mouse-throw continuation:
+                    if ( _settings->getThrowingEnabled() && isMouseMoving() )
+                    {
+                        action = _last_action;
+                        if( handleMouseAction( action, aa.asView() ) )
+                        {
+                            aa.requestRedraw();
+                            aa.requestContinuousUpdate( true );
+                            _thrown = true;
+                        }
+                    }
+                    else 
+    #endif
+                    if ( isMouseClick( &ea ) )
+                    {
+>>>>>>> EarthManipulator: started multitouch support
                         addMouseEvent( ea );
                         if ( _mouse_down_event )
                         {
@@ -1788,7 +1859,11 @@ EarthManipulator::flushMouseEventStack()
 {
     _ga_t1 = NULL;
     _ga_t0 = NULL;
+<<<<<<< HEAD
     //_touchPointQueue.clear();
+=======
+    _touchPointQueue.clear();
+>>>>>>> EarthManipulator: started multitouch support
 }
 
 
@@ -1797,17 +1872,26 @@ EarthManipulator::addMouseEvent(const osgGA::GUIEventAdapter& ea)
 {
     _ga_t1 = _ga_t0;
     _ga_t0 = &ea;
+<<<<<<< HEAD
     //_touchPointQueue.clear();
+=======
+    _touchPointQueue.clear();
+>>>>>>> EarthManipulator: started multitouch support
 }
 
 void
 EarthManipulator::addTouchEvents(const osgGA::GUIEventAdapter& ea)
 {
+<<<<<<< HEAD
     _ga_t1 = _ga_t0;
     _ga_t0 = &ea;
     
     // first, push the old event to the back of the queue.
     while ( _touchPointQueue.size() > 1 )
+=======
+    // first, push the old event to the back of the queue.
+    if ( _touchPointQueue.size() > 1 )
+>>>>>>> EarthManipulator: started multitouch support
         _touchPointQueue.pop_front();
 
     // queue any new events.
@@ -1821,7 +1905,12 @@ EarthManipulator::addTouchEvents(const osgGA::GUIEventAdapter& ea)
         for( unsigned i=0; i<data->getNumTouchPoints(); ++i )
         {
             osgGA::GUIEventAdapter::TouchData::TouchPoint tp = data->get(i);
+<<<<<<< HEAD
             ev.push_back(tp);
+=======
+            ev.resize(tp.id+1);
+            ev[tp.id] = tp; // overwrites duplicates automatically.
+>>>>>>> EarthManipulator: started multitouch support
         }
     }
 }
@@ -1829,6 +1918,7 @@ EarthManipulator::addTouchEvents(const osgGA::GUIEventAdapter& ea)
 bool
 EarthManipulator::parseTouchEvents( TouchEvents& output )
 {
+<<<<<<< HEAD
     const float sens = 0.005f;    
         
     if (_touchPointQueue.size() == 2 )
@@ -1926,6 +2016,78 @@ EarthManipulator::parseTouchEvents( TouchEvents& output )
                 ev._dx =  (p1[0].x - p0[0].x) * sens;
                 ev._dy = -(p1[0].y - p0[0].y) * sens;
             }
+=======
+    // two-finger drag gestures:
+    if (_touchPointQueue.size() == 2 &&     // two touch points
+        _touchPointQueue[1].size()   == 2 &&     // two fingers
+        _touchPointQueue[2].size()   == 2)       // two fingers
+    {
+        MultiTouchPoint& e0 = _touchPointQueue[0];
+        MultiTouchPoint& e1 = _touchPointQueue[1];
+
+        if (e0[0].phase == osgGA::GUIEventAdapter::TOUCH_MOVED &&
+            e1[0].phase == osgGA::GUIEventAdapter::TOUCH_MOVED &&
+            e0[1].phase == osgGA::GUIEventAdapter::TOUCH_MOVED &&
+            e1[1].phase == osgGA::GUIEventAdapter::TOUCH_MOVED)
+        {
+            // gather information about what happened:
+            float dx[2], dy[2];
+            for( int i=0; i<2; ++i )
+            {
+                dx[i] = e1[i].x - e0[i].x;
+                dy[i] = e1[i].y - e0[i].y;
+            }
+            osg::Vec2f v0( dx[0], dy[0] );
+            osg::Vec2f v1( dx[1], dy[1] );
+            float deltaDistance = v1.length() - v0.length();
+            float dot = fabs( v0 * v1 );
+
+            // how see if that corresponds to any touch events:
+            if ( deltaDistance > 0.1 ) // bother??
+            {
+                // distance between the fingers changed: a pinch.
+                output.push_back(TouchEvent());
+                TouchEvent& ev = output.back();
+                ev._eventType = EVENT_MULTI_PINCH;
+                ev._dx[0] = dx[0], ev._dx[1] = dx[1], ev._dy[0] = dy[0], ev._dy[1] = dy[1];
+                ev._deltaDistance = deltaDistance;
+                ev._dot = dot;
+            }
+            
+            if ( dot < 1.0 ) // bother??
+            {
+                // angle between vectors changed: a twist.
+                output.push_back(TouchEvent());
+                TouchEvent& ev = output.back();
+                ev._eventType = EVENT_MULTI_TWIST;
+                ev._dx[0] = dx[0], ev._dx[1] = dx[1], ev._dy[0] = dy[0], ev._dy[1] = dy[1];
+                ev._deltaDistance = deltaDistance;
+                ev._dot = dot;
+            }
+
+            if ( true ) // ???
+            {
+                // two-finger move.
+                output.push_back(TouchEvent());
+                TouchEvent& ev = output.back();
+                ev._eventType = EVENT_MULTI_DRAG;
+                ev._dx[0] = dx[0], ev._dx[1] = dx[1], ev._dy[0] = dy[0], ev._dy[1] = dy[1];
+                ev._deltaDistance = deltaDistance;
+                ev._dot = dot;
+            }
+        }
+    }
+
+    else if ( _touchPointQueue.size() == 1 )
+    {
+        MultiTouchPoint& ev = _touchPointQueue.front();
+
+        if ( ev.size() == 1 ) // one-finger
+        {
+        }
+        else if ( ev.size() == 2 ) // two-finger
+        {
+>>>>>>> EarthManipulator: started multitouch support
         }
     }
 
@@ -2580,6 +2742,20 @@ EarthManipulator::handleScrollAction( const Action& action, double duration )
     applyOptionsToDeltas( action, dx, dy );
 
     return handleAction( action, dx, dy, duration );
+}
+
+bool
+EarthManipulator::handleMultiTouchAction( const Action& action, const EarthManipulator::TouchEvent& te, osg::View* view )
+{
+    if ( action._type == ACTION_ZOOM )
+    {
+        handleMovementAction( action._type, 0.0, te._deltaDistance, view );
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 bool
