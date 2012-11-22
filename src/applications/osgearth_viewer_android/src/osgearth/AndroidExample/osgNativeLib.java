@@ -1,9 +1,13 @@
 package osgearth.AndroidExample;
 
+import android.util.Log;
+
 public class osgNativeLib {
 	
 	static {
-        System.loadLibrary("osgNativeLib");
+//		Log.w("osgNativeLib", "About to load lib");
+//        System.loadLibrary("osgNativeLib");
+//        Log.w("osgNativeLib", "Lib loaded");
     }
 
    /**

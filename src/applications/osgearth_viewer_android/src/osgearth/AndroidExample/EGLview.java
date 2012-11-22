@@ -1,5 +1,5 @@
 
-package osgearth.AndroidExample;
+package osgearth.Common;
 /*
  * Copyright (C) 2008 The Android Open Source Project
  *
@@ -15,7 +15,6 @@ package osgearth.AndroidExample;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import android.app.Dialog;
 import android.content.Context;
 import android.graphics.PixelFormat;
 import android.opengl.GLSurfaceView;
@@ -46,26 +45,29 @@ import javax.microedition.khronos.opengles.GL10;
  *   that matches it exactly (with regards to red/green/blue/alpha channels
  *   bit depths). Failure to do so would result in an EGL_BAD_MATCH error.
  */
-public class EGLview extends GLSurfaceView {
+public class EGLview extends GLSurfaceView implements View.OnTouchListener, View.OnKeyListener {
 	private static String TAG = "EGLview";
 	private static final boolean DEBUG = false;
 	
+    GestureDetector gestureDetector;
+    static int tapcount;
+	
 	public EGLview(Context context) {
 	    super(context);
-	    init(false, 16, 8);
+	    init(context, true, 24, 8);
 	}
 	public EGLview(Context context, AttributeSet attrs) {
 	    super(context,attrs);
-	    init(false, 16, 8);
+	    init(context, true, 24, 8);
 	}
 	
 	
 	public EGLview(Context context, boolean translucent, int depth, int stencil) {
 	    super(context);
-	    init(translucent, depth, stencil);
+	    init(context, translucent, depth, stencil);
 	}
 	
-	private void init(boolean translucent, int depth, int stencil) {
+	private void init(Context context, boolean translucent, int depth, int stencil) {
 	
 	    /* By default, GLSurfaceView() creates a RGB_565 opaque surface.
 	     * If we want a translucent one, we should change the surface's
@@ -92,7 +94,123 @@ public class EGLview extends GLSurfaceView {
 	
 	    /* Set the renderer responsible for frame rendering */
 	    setRenderer(new Renderer());
+	    
+	    //
+	    //create gesture detector for double tap   	
+	    gestureDetector = new GestureDetector(context, new GestureListener());
+	    
+		this.setOnTouchListener(this);
+		this.setOnKeyListener(this);
 	}
+	
+	   @Override
+	   public boolean onTouch(View v, MotionEvent event) {
+	    	
+	    	gestureDetector.onTouchEvent(event);
+	    	
+	    	//dumpEvent(event);
+	    	//long time_arrival = event.getEventTime();
+	    	int n_points = event.getPointerCount();
+	    	int action = event.getAction() & MotionEvent.ACTION_MASK;
+	    	
+	    		switch(action){
+	    		case MotionEvent.ACTION_DOWN:
+	    		case MotionEvent.ACTION_POINTER_DOWN:
+	    			for(int i=0; i<n_points; i++){
+	    				int touchID = event.getPointerId(i);
+	    				osgNativeLib.touchBeganEvent(touchID, event.getX(i), event.getY(i));
+	    			}
+	    			break;
+	    		case MotionEvent.ACTION_CANCEL:
+	    			for(int i=0; i<n_points; i++){
+	    				int touchID = event.getPointerId(i);
+	    				osgNativeLib.touchEndedEvent(touchID, event.getX(i), event.getY(i),1);
+	    			}
+	    			break;
+	    		case MotionEvent.ACTION_MOVE:
+	    		//case MotionEvent.ACTION_POINTER_MOVE:
+	    			final int historySize = event.getHistorySize();
+	    		    if(n_points > 1){ 
+	    		    	for (int h = 0; h < historySize; h++) {
+	    		    		//System.out.printf("At time %d:", ev.getHistoricalEventTime(h));
+	    		    		for (int p = 0; p < n_points; p++) {
+	    		    			int touchID = event.getPointerId(p);
+	    		    			osgNativeLib.touchMovedEvent(touchID, event.getHistoricalX(p, h), event.getHistoricalY(p, h));
+	    		    		}
+	    		    	}
+	    		    }
+	    			for(int i=0; i<n_points; i++){
+	    				int touchID = event.getPointerId(i);
+	    				osgNativeLib.touchMovedEvent(touchID, event.getX(i), event.getY(i));
+	    			}
+	    			break;
+	    		case MotionEvent.ACTION_UP:
+	    		case MotionEvent.ACTION_POINTER_UP:
+	    			for(int i=0; i<n_points; i++){
+	    				int touchID = event.getPointerId(i);
+	    				osgNativeLib.touchEndedEvent(touchID, event.getX(i), event.getY(i), tapcount);
+	    				tapcount = 0;
+	    			}
+	    			break;
+	    		default :
+	    			Log.e(TAG,"1 point Action not captured");	
+	    		}		
+				
+			return true;
+		}
+
+	    private class GestureListener extends GestureDetector.SimpleOnGestureListener {
+
+	        @Override
+	        public boolean onDown(MotionEvent event) {
+	            return true;
+	        }
+	        // event when double tap occurs
+	        @Override
+	        public boolean onDoubleTap(MotionEvent event) {
+	            //float x = event.getX();
+	            //float y = event.getY();
+
+	            //int touchID = event.getPointerId(0);
+	            //osgNativeLib.clearEventQueue();
+				//osgNativeLib.touchEndedEvent(touchID, event.getX(0), event.getY(0), 2);
+				tapcount = 2;
+	            return true;
+	        }
+	    }
+	    
+	    @Override
+		public boolean onKey(View v, int keyCode, KeyEvent event) {
+			
+			return true;
+		}
+	    @Override
+	    public boolean onKeyDown(int keyCode, KeyEvent event){
+	    	//DO NOTHING this will render useless every menu key except Home
+	    	int keyChar= event.getUnicodeChar();
+	    	osgNativeLib.keyboardDown(keyChar);
+	    	return true;
+	    }
+	    @Override
+	    public boolean onKeyUp(int keyCode, KeyEvent event){
+	    	switch (keyCode){
+	    	case KeyEvent.KEYCODE_BACK:
+	    		//super.onDestroy();
+	    		//this.finish();
+	    		break;
+	    	case KeyEvent.KEYCODE_SEARCH:
+	    		break;
+	    	case KeyEvent.KEYCODE_MENU:
+	    		//this.openOptionsMenu();
+	    		break;
+	    	default:
+	    		int keyChar= event.getUnicodeChar();
+	    		osgNativeLib.keyboardUp(keyChar);    		
+	    	}
+	    	
+	    	return true;
+	    }
+	
 	
 	private static class ContextFactory implements GLSurfaceView.EGLContextFactory {
 	    private static int EGL_CONTEXT_CLIENT_VERSION = 0x3098;
@@ -141,6 +259,8 @@ public class EGLview extends GLSurfaceView {
 	        EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES_BIT,
 	        EGL10.EGL_NONE
 	    };
+	    private static final int EGL_DEPTH_ENCODING_NV      = 0x30E2;
+	    private static final int EGL_DEPTH_ENCODING_NONLINEAR_NV = 0x30E3;
 	
 	    public EGLConfig chooseConfig(EGL10 egl, EGLDisplay display) {
 	
@@ -170,17 +290,10 @@ public class EGLview extends GLSurfaceView {
 	
 	    public EGLConfig chooseConfig(EGL10 egl, EGLDisplay display,
 	            EGLConfig[] configs) {
+	    	EGLConfig bestConfig = null; 
 	        for(EGLConfig config : configs) {
-	            int d = findConfigAttrib(egl, display, config,
-	                    EGL10.EGL_DEPTH_SIZE, 0);
-	            int s = findConfigAttrib(egl, display, config,
-	                    EGL10.EGL_STENCIL_SIZE, 0);
-	
-	            // We need at least mDepthSize and mStencilSize bits
-	            if (d < mDepthSize || s < mStencilSize)
-	                continue;
-	
-	            // We want an *exact* match for red/green/blue/alpha
+	           
+	        	 // We want an *exact* match for red/green/blue/alpha
 	            int r = findConfigAttrib(egl, display, config,
 	                    EGL10.EGL_RED_SIZE, 0);
 	            int g = findConfigAttrib(egl, display, config,
@@ -190,10 +303,34 @@ public class EGLview extends GLSurfaceView {
 	            int a = findConfigAttrib(egl, display, config,
 	                    EGL10.EGL_ALPHA_SIZE, 0);
 	
-	            if (r == mRedSize && g == mGreenSize && b == mBlueSize && a == mAlphaSize)
-	                return config;
+	            if (r != mRedSize || g != mGreenSize || b != mBlueSize || a != mAlphaSize)
+	            	continue;
+	        	
+	            
+	        	int d = findConfigAttrib(egl, display, config,
+	                    EGL10.EGL_DEPTH_SIZE, 0);
+	            int s = findConfigAttrib(egl, display, config,
+	                    EGL10.EGL_STENCIL_SIZE, 0);
+	
+	            // We need at least mDepthSize and mStencilSize bits
+	            if (d < mDepthSize || s < mStencilSize)
+	                continue;
+	            
+	            if(bestConfig == null){
+	            	bestConfig = config;
+	            }
+	            
+	            //check for EGL_DEPTH_ENCODING_NV
+	            int hasDepthNonLinear = findConfigAttrib(egl, display, config, EGL_DEPTH_ENCODING_NV, 0);
+	            if(hasDepthNonLinear== EGL_DEPTH_ENCODING_NONLINEAR_NV)
+	            	bestConfig = config;
+	         
 	        }
-	        return null;
+	        if(bestConfig == null && mDepthSize==24){
+	        	mDepthSize = 16;
+	        	return chooseConfig(egl, display, configs);
+	        }
+	        return bestConfig;
 	    }
 	
 	    private int findConfigAttrib(EGL10 egl, EGLDisplay display,

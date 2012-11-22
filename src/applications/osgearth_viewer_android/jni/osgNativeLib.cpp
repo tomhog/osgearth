@@ -8,6 +8,13 @@
 
 OsgMainApp mainApp;
 
+extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved)
+{
+    __android_log_write(ANDROID_LOG_ERROR, "OSGANDROID",
+            "Entered JNI_OnLoad");
+	return JNI_VERSION_1_6;
+}
+
 extern "C" {
     JNIEXPORT void JNICALL Java_osgearth_AndroidExample_osgNativeLib_init(JNIEnv * env, jobject obj, jint width, jint height);
     JNIEXPORT void JNICALL Java_osgearth_AndroidExample_osgNativeLib_step(JNIEnv * env, jobject obj);

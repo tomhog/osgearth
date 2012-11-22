@@ -1,36 +1,38 @@
+
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
 LOCAL_MODULE    := osgNativeLib
 ### Main Install dir
-OSG_ANDROID_DIR		:= /Users/hogbox/Documents/AlphaPixel/androidPort/osg-gles2-android
-OSGEARTH_ANDROID_DIR	:= /Users/hogbox/Documents/AlphaPixel/androidPort/osgearth-android
-THIRDPARTY_ANDROID_DIR	:= /Users/hogbox/Documents/AlphaPixel/androidPort/osg-gles2-android/3rdparty/build
+NDK_ROOT                := /Users/thomashogarth/Developer/Android/android-ndk-r9d
+OSG_ANDROID_DIR		:= /Users/thomashogarth/Developer/Android/osg
+OSGEARTH_ANDROID_DIR	:= /Users/thomashogarth/Developer/Android/osgearth-android
+THIRDPARTY_ANDROID_DIR	:= /Users/thomashogarth/Developer/Android/osg/3rdparty
 
 OSG_LIBDIR 			:= $(OSG_ANDROID_DIR)/obj/local/armeabi
 OSGEARTH_LIBDIR 		:= $(OSGEARTH_ANDROID_DIR)/obj/local/armeabi
-PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/libpng/obj/local/armeabi
-TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/libtiff/obj/local/armeabi
-GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/gdal/obj/local/armeabi
-GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/geos/obj/local/armeabi
-PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/proj/obj/local/armeabi
-CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/curl/obj/local/armeabi
-FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/freetype/obj/local/armeabi
-SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/sqlite/obj/local/armeabi
+PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
 
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 	LOCAL_ARM_NEON 	:= true
 	OSG_LIBDIR 			:= $(OSG_ANDROID_DIR)/obj/local/armeabi-v7a
 	OSGEARTH_LIBDIR 		:= $(OSGEARTH_ANDROID_DIR)/obj/local/armeabi-v7a
-	PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/libpng/obj/local/armeabi-v7a
-	TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/libtiff/obj/local/armeabi-v7a
-	GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/gdal/obj/local/armeabi-v7a
-	GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/geos/obj/local/armeabi-v7a
-	PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/proj/obj/local/armeabi-v7a
-	CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/curl/obj/local/armeabi-v7a
-	FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/freetype/obj/local/armeabi-v7a
-	SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/sqlite/obj/local/armeabi-v7a
+	PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/libpng/obj/local/armeabi-v7a
+	TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/libtiff/obj/local/armeabi-v7a
+	GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/gdal/obj/local/armeabi-v7a
+	GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/geos/obj/local/armeabi-v7a
+	PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/proj/obj/local/armeabi-v7a
+	CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/curl/obj/local/armeabi-v7a
+	FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/build/freetype/obj/local/armeabi-v7a
+	SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/sqlite/obj/local/armeabi-v7a
 endif
 
 ### Add all source file names to be included in lib separated by a whitespace
@@ -39,9 +41,15 @@ LOCAL_C_INCLUDES:= $(OSG_ANDROID_DIR)/include $(OSGEARTH_ANDROID_DIR)/src
 LOCAL_CFLAGS    := -Werror -fno-short-enums -DANDROID -DOSGEARTH_LIBRARY_STATIC
 LOCAL_CPPFLAGS  := -DOSG_LIBRARY_STATIC -DOSGEARTH_LIBRARY_STATIC -DANDROID
 
-LOCAL_LDLIBS    := -llog -lGLESv2 -lz -lgnustl_static -fuse-ld=gold
-LOCAL_SRC_FILES := osgNativeLib.cpp OsgMainApp.cpp OsgAndroidNotifyHandler.cpp EarthMultiTouchManipulator.cpp GLES2ShaderGenVisitor.cpp
-LOCAL_LDFLAGS   := -L $(OSGEARTH_LIBDIR) \
+LOCAL_LDLIBS    := -llog -lGLESv2 -lz -ldl 
+#-lstlport #-fuse-ld=gold
+
+LOCAL_SRC_FILES := osgNativeLib.cpp OsgMainApp.cpp DemoScene.cpp OsgAndroidNotifyHandler.cpp osgEarthDemo.cpp GLES2ShaderGenVisitor.cpp
+
+LOCAL_C_INCLUDES += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/include
+LOCAL_C_INCLUDES += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/libs/armeabi-v7a/include
+
+LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
 -losgdb_kml \
 -losgdb_osgearth_gdal \
 -losgdb_osgearth_yahoo \
@@ -142,4 +150,7 @@ LOCAL_LDFLAGS   := -L $(OSGEARTH_LIBDIR) \
 -lproj \
 -L $(SQLITE_LIBDIR) \
 -lsqlite3
+
+LOCAL_LDLIBS += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/libs/armeabi-v7a/libgnustl_static.a
+
 include $(BUILD_SHARED_LIBRARY)

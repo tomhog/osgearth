@@ -13,17 +13,6 @@
 //osg
 #include <osgViewer/Viewer>
 
-//osgearth
-#include <osgEarth/Viewpoint>
-#include <osgEarthUtil/EarthManipulator>
-#include <osgEarthUtil/AutoClipPlaneHandler>
-#include <osgEarthUtil/ObjectLocator>
-#include <osgEarthUtil/SkyNode>
-#include <osgEarthUtil/EarthManipulator>
-#include <osgEarthUtil/ExampleResources>
-
-#include "OsgAndroidNotifyHandler.hpp"
-#include "EarthMultiTouchManipulator.h"
 
 //Static plugins Macro
 #include "osgPlugins.h"
@@ -43,7 +32,7 @@ private:
     int _bufferHeight;
     bool _initialized;
     
-    OsgAndroidNotifyHandler *_notifyHandler;
+    //OsgAndroidNotifyHandler *_notifyHandler;
 
     //events for each touch phase, these are cleared each frame
     osg::ref_ptr<osgGA::GUIEventAdapter> _frameTouchBeganEvents;

@@ -48,6 +48,7 @@ USE_OSGPLUGIN(jpeg)
 USE_OSGPLUGIN(curl)
 USE_OSGPLUGIN(freetype)
 
+//USE_OSGPLUGIN(earth)
 
 USE_OSGPLUGIN(kml)
 USE_OSGPLUGIN(osgearth_feature_wfs)
@@ -81,3 +82,4 @@ USE_OSGPLUGIN(earth)
 USE_OSGPLUGIN(osgearth_cache_filesystem)
 USE_OSGPLUGIN(osgearth_arcgis)
 USE_OSGPLUGIN(osgearth_osg)
+

@@ -16,13 +16,12 @@ void OsgMainApp::initOsgWindow(int x,int y,int width,int height){
     __android_log_write(ANDROID_LOG_ERROR, "OSGANDROID",
             "Initializing geometry");
     //
-
     _scene = new DemoScene();
     _scene->init("", osg::Vec2(width, height), 0);
 
     _initialized = true;
-
 }
+
 //Draw
 void OsgMainApp::draw(){
 
