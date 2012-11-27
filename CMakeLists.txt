@@ -50,6 +50,7 @@ SET(THIRD_PARTY_DIR "" CACHE PATH "OSG 3rd-party dependency folder")
 # Maybe this can be used override existing behavior if needed?
 SET(CMAKE_MODULE_PATH "${OSGEARTH_SOURCE_DIR}/CMakeModules;${CMAKE_MODULE_PATH}")
 
+
 # Attempt to detect the GIT revision number.
 OPTION(OSGEARTH_EMBED_GIT_SHA "Embeds the GIT SHA in the version code" OFF)
 IF (OSGEARTH_EMBED_GIT_SHA)
@@ -138,7 +139,8 @@ OPTION(OSG_BUILD_PLATFORM_IPHONE_SIMULATOR "Enable IPhoneSDK Simulator support" 
 IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)
   
   #you need to manually set the default sdk version here
-  SET (IPHONE_SDKVER "6.1")
+  SET (IPHONE_SDKVER "7.0")
+
   #the below is taken from ogre, it states the gcc stuff needs to happen before PROJECT() is called. I've no clue if we even need it
   # Force gcc <= 4.2 on iPhone
   include(CMakeForceCompiler)
@@ -157,6 +159,7 @@ IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)
 ENDIF()
 
 ENDIF(APPLE AND NOT ANDROID)
+
 # IPHONE_PORT@tom
 
 # check if STLport is required
@@ -219,6 +222,7 @@ ELSE()
     ENDIF (QT4_FOUND)
 ENDIF ()
 
+
 OPTION(OSGEARTH_USE_QT "Enable to use Qt (build Qt-dependent libraries, plugins and examples)" ON)
 
 SET (WITH_EXTERNAL_TINYXML FALSE CACHE BOOL "Use bundled or system wide version of TinyXML")
@@ -241,7 +245,6 @@ ENDIF(UNIX AND NOT ANDROID)
 # Common global definitions
 #ADD_DEFINITIONS(-D)
 # Platform specific definitions
-
 
 IF(WIN32 AND NOT ANDROID)
   IF(MSVC)
@@ -283,11 +286,9 @@ ENDIF(WIN32 AND NOT ANDROID)
 ########################################################################################################
 
 # Common to all platforms:
+SET(OSG_DIR "" CACHE PATH "set to base osg install path")
 
 SET(CMAKE_DEBUG_POSTFIX  "d" CACHE STRING "add a postfix, usually d on windows")
-SET(CMAKE_RELEASE_POSTFIX "" CACHE STRING "add a postfix, usually empty on windows")
-SET(CMAKE_RELWITHDEBINFO_POSTFIX "rd" CACHE STRING "add a postfix, usually empty on windows")
-SET(CMAKE_MINSIZEREL_POSTFIX "s" CACHE STRING "add a postfix, usually empty on windows")
 
 FIND_PACKAGE(OSG)
 
@@ -489,7 +490,6 @@ ADD_CUSTOM_TARGET(uninstall
 add_subdirectory(docs)
 
 
-
 #------------------------------------------------------------------------------
 # Packaging setup.
 
@@ -508,3 +508,4 @@ IF(ANDROID)
     configure_file("${OSG_ANDROID_TEMPLATES}/Application.mk.master.in" "${CMAKE_BINARY_DIR}/Application.mk")
     configure_file("${OSG_ANDROID_TEMPLATES}/AndroidManifest.xml.master.in" "${CMAKE_BINARY_DIR}/AndroidManifest.xml")
 ENDIF(ANDROID)
+
