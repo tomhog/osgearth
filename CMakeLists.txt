@@ -43,12 +43,15 @@ SET(OPENTHREADS_SONAMES TRUE)
 
 SET(OpenThreads_SOURCE_DIR ${OSGEARTH_SOURCE_DIR})
 
+
 # Good place to look for the OSG 3rd party libs
 SET(THIRD_PARTY_DIR "" CACHE PATH "OSG 3rd-party dependency folder")
+
 
 # We have some custom .cmake scripts not in the official distribution.
 # Maybe this can be used override existing behavior if needed?
 SET(CMAKE_MODULE_PATH "${OSGEARTH_SOURCE_DIR}/CMakeModules;${CMAKE_MODULE_PATH}")
+
 
 
 # Attempt to detect the GIT revision number.
@@ -160,7 +163,6 @@ ENDIF()
 
 ENDIF(APPLE AND NOT ANDROID)
 
-# IPHONE_PORT@tom
 
 # check if STLport is required
 OPTION(USE_STLPORT "Set to ON to build OSGEARTH with stlport instead of the default STL library." OFF)
@@ -193,34 +195,13 @@ FIND_PACKAGE(GDAL)
 FIND_PACKAGE(GEOS)
 FIND_PACKAGE(Sqlite3)
 FIND_PACKAGE(ZLIB)
-
-FIND_PACKAGE(LevelDB)
-
-FIND_PACKAGE(SilverLining)
-FIND_PACKAGE(Triton)
-
-# JavaScript Engines:
-SET(V8_DIR "" CACHE PATH "set to base V8 install path")
 FIND_PACKAGE(V8)
-FIND_PACKAGE(JavaScriptCore)
 
-SET(DUKTAPE_DIR "" CACHE PATH "set to base DUKTAPE install path")
-FIND_PACKAGE(Duktape)
-
-FIND_PACKAGE(Qt5Core QUIET)
-FIND_PACKAGE(Qt5Widgets QUIET)
-FIND_PACKAGE(Qt5Gui QUIET)
-FIND_PACKAGE(Qt5OpenGL QUIET)
-IF ( Qt5Core_FOUND AND Qt5Widgets_FOUND AND Qt5Gui_FOUND AND Qt5OpenGL_FOUND )
-    SET(QT_INCLUDES ${Qt5Widgets_INCLUDE_DIRS} ${Qt5OpenGL_INCLUDE_DIRS})
-ELSE()
-    FIND_PACKAGE(Qt4)
-    IF (QT4_FOUND)
-        INCLUDE(${QT_USE_FILE})
-		SET(QT_INCLUDES ${QT_INCLUDES} ${QT_INCLUDE_DIR} ${QT_QTCORE_INCLUDE_DIR} ${QT_QTGUI_INCLUDE_DIR}${QT_QTOPENGL_INCLUDE_DIR} )
-        SET(QT_ALL_LIBRARIES ${QT_LIBRARIES} ${QT_QTCORE_LIBRARY} ${QT_QTWEBKIT_LIBRARY} ${QT_QTNETWORK_LIBRARY} ${QT_QTXML_LIBRARY} ${QT_QTOPENGL_LIBRARY})
-    ENDIF (QT4_FOUND)
-ENDIF ()
+FIND_PACKAGE(Qt4 4.6)
+IF (QT4_FOUND)
+    INCLUDE(${QT_USE_FILE})
+    SET(QT_ALL_LIBRARIES ${QT_LIBRARIES} ${QT_QTCORE_LIBRARY} ${QT_QTWEBKIT_LIBRARY} ${QT_QTNETWORK_LIBRARY} ${QT_QTXML_LIBRARY} ${QT_QTOPENGL_LIBRARY})
+ENDIF (QT4_FOUND)
 
 
 OPTION(OSGEARTH_USE_QT "Enable to use Qt (build Qt-dependent libraries, plugins and examples)" ON)
@@ -485,10 +466,6 @@ ADD_CUSTOM_TARGET(uninstall
 
 
 
-#------------------------------------------------------------------------------
-# Docs.
-add_subdirectory(docs)
-
 
 #------------------------------------------------------------------------------
 # Packaging setup.
@@ -508,4 +485,3 @@ IF(ANDROID)
     configure_file("${OSG_ANDROID_TEMPLATES}/Application.mk.master.in" "${CMAKE_BINARY_DIR}/Application.mk")
     configure_file("${OSG_ANDROID_TEMPLATES}/AndroidManifest.xml.master.in" "${CMAKE_BINARY_DIR}/AndroidManifest.xml")
 ENDIF(ANDROID)
-
