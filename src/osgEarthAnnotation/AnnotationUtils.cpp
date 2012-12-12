@@ -138,9 +138,15 @@ AnnotationUtils::createTextDrawable(const std::string& text,
     }
 
     // this disables the default rendering bin set by osgText::Font. Necessary if we're
-    // going to do decluttering at a higher level
-    osg::StateSet* stateSet = new osg::StateSet();
-    t->setStateSet( stateSet );
+    // going to do decluttering.
+    // TODO: verify that it's still OK to share the font stateset (think so) or does it
+    // need to be marked DYNAMIC
+    if ( t->getStateSet() )
+      t->getStateSet()->setRenderBinToInherit();
+    //osg::StateSet* stateSet = new osg::StateSet();
+    //t->setStateSet( stateSet );
+
+#if 0 // OBE: the decluttering bin is now set higher up (in OrthoNode)
     //osg::StateSet* stateSet = t->getOrCreateStateSet();
 
     if ( symbol && symbol->declutter().isSet() )
@@ -151,12 +157,15 @@ AnnotationUtils::createTextDrawable(const std::string& text,
     {
         stateSet->setRenderBinToInherit();
     }
+#endif
 
+#if 0 // OBE: shadergenerator now takes care of all this
     // add the static "isText=true" uniform; this is a hint for the annotation shaders
     // if they get installed.
-    static osg::ref_ptr<osg::Uniform> s_isTextUniform = new osg::Uniform(osg::Uniform::BOOL, UNIFORM_IS_TEXT());
-    s_isTextUniform->set( true );
-    stateSet->addUniform( s_isTextUniform.get() );
+    //static osg::ref_ptr<osg::Uniform> s_isTextUniform = new osg::Uniform(osg::Uniform::BOOL, UNIFORM_IS_TEXT());
+    //s_isTextUniform->set( true );
+    //stateSet->addUniform( s_isTextUniform.get() );
+#endif
 
     return t;
 }
@@ -225,11 +234,13 @@ AnnotationUtils::createImageGeometry(osg::Image*       image,
 
     geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::QUADS,0,4));
 
+#if 0
     // add the static "isText=true" uniform; this is a hint for the annotation shaders
     // if they get installed.
     static osg::ref_ptr<osg::Uniform> s_isNotTextUniform = new osg::Uniform(osg::Uniform::BOOL, UNIFORM_IS_TEXT());
     s_isNotTextUniform->set( false );
     dstate->addUniform( s_isNotTextUniform.get() );
+#endif
 
     return geom;
 }
@@ -781,4 +792,40 @@ AnnotationUtils::styleRequiresAlphaBlending( const Style& style )
     }
 
     return false;
+}
+
+
+void
+AnnotationUtils::getAltitudePolicy(const Style& style, AltitudePolicy& out)
+{
+    out.sceneClamping = false;
+    out.gpuClamping   = false;
+    out.draping       = false;
+
+    // conditions where clamping is not yet compatible
+    bool compatible =
+        !style.has<ExtrusionSymbol>();      // backwards-compability
+
+    if ( compatible )
+    {
+        const AltitudeSymbol* alt = style.get<AltitudeSymbol>();
+        if ( alt )
+        {
+            if (alt->clamping() == AltitudeSymbol::CLAMP_TO_TERRAIN || 
+                alt->clamping() == AltitudeSymbol::CLAMP_RELATIVE_TO_TERRAIN )
+            {
+                out.sceneClamping = alt->technique() == AltitudeSymbol::TECHNIQUE_SCENE;
+                out.gpuClamping   = alt->technique() == AltitudeSymbol::TECHNIQUE_GPU;
+                out.draping       = alt->technique() == AltitudeSymbol::TECHNIQUE_DRAPE;
+
+                // for instance/markers, GPU clamping falls back on SCENE clamping.
+                if (out.gpuClamping &&
+                    (style.has<InstanceSymbol>() || style.has<MarkerSymbol>()))
+                {
+                    out.gpuClamping   = false;
+                    out.sceneClamping = true;
+                }
+            }
+        }
+    }
 }

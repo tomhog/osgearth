@@ -81,6 +81,7 @@ SET(TARGET_SRC
 	GeometryUtils.cpp
     LabelSource.cpp
     MeshClamper.cpp
+    OgrUtils.cpp
     OptimizerHints.cpp
     ResampleFilter.cpp
     ScaleFilter.cpp

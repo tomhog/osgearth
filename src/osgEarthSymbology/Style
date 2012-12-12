@@ -84,6 +84,14 @@ namespace osgEarth { namespace Symbology
         /** Remove a symbol from the collection */
         bool removeSymbol (Symbol* symbol);
 
+        /** Remove a symbol by type */
+        template<typename T>
+        bool remove()
+        {
+            Symbol* s = get<T>();
+            return s ? removeSymbol(s) : false;
+        }
+
         /** Gets a typed symbol from the style (the first one found). */
         template<typename T>
         T* getSymbol()
@@ -131,7 +139,9 @@ namespace osgEarth { namespace Symbology
             }
             return sym;
         }
-        template<typename T> T* getOrCreate() { return getOrCreateSymbol<T>(); } // alias        
+
+        template<typename T> T* getOrCreate() { return getOrCreateSymbol<T>(); } // alias
+
 
         /** Serializes this object into a Config. */
         virtual Config getConfig( bool keepOrigType =true ) const;
