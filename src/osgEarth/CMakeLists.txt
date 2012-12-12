@@ -9,14 +9,6 @@ MARK_AS_ADVANCED(CURL_IS_STATIC)
 
 ADD_DEFINITIONS(-DTIXML_USE_STL)
 
-IF(WIN32)
-    SET(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:MSVCRT")
-    IF(CURL_IS_STATIC)
-        ADD_DEFINITIONS(-DCURL_STATICLIB)
-        SET(TARGET_EXTERNAL_LIBRARIES ws2_32 winmm wldap32)
-    ENDIF(CURL_IS_STATIC)
-ENDIF(WIN32)
-
 SET(LIB_NAME osgEarth)
 
 SET(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
@@ -27,6 +19,9 @@ SET(TARGET_H
     CachePolicy
     CacheSeed
     Capabilities
+    ClampableNode
+    ClampingTechnique
+    ClampingBinTechnique
     ColorFilter
     Common
     CompositeTileSource
@@ -38,6 +33,7 @@ SET(TARGET_H
     DPLineSegmentIntersector
     Draggers
     DrapeableNode
+    DrapingTechnique
     DrawInstanced
     ECEF
     ElevationLayer
@@ -81,6 +77,7 @@ SET(TARGET_H
     Notify
     optional
     OverlayDecorator
+    OverlayNode
     Pickers
     Profile
     Progress
@@ -142,6 +139,9 @@ SET(TARGET_SRC
     CachePolicy.cpp
     CacheSeed.cpp
     Capabilities.cpp
+    ClampableNode.cpp
+    ClampingTechnique.cpp
+    ClampingBinTechnique.cpp
     ColorFilter.cpp
     CompositeTileSource.cpp
     Config.cpp
@@ -151,6 +151,7 @@ SET(TARGET_SRC
     Draggers.cpp
     DPLineSegmentIntersector.cpp
     DrapeableNode.cpp
+    DrapingTechnique.cpp
     DrawInstanced.cpp
     ECEF.cpp
     ElevationLayer.cpp
@@ -189,6 +190,7 @@ SET(TARGET_SRC
     NodeUtils.cpp
     Notify.cpp
     OverlayDecorator.cpp
+    OverlayNode.cpp
     Pickers.cpp
     Profile.cpp
     Progress.cpp
@@ -229,10 +231,15 @@ IF (TINYXML_FOUND)
     INCLUDE_DIRECTORIES(${TINYXML_INCLUDE_DIR})
 ENDIF (TINYXML_FOUND)
 
-IF (WIN32)
-  SET(TARGET_EXTERNAL_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${MATH_LIBRARY} )
-ELSE(WIN32)
-  SET(TARGET_EXTERNAL_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${MATH_LIBRARY} )
+SET(TARGET_EXTERNAL_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} ${MATH_LIBRARY} )
+
+IF(WIN32)
+    SET(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} /NODEFAULTLIB:MSVCRT")
+    IF(CURL_IS_STATIC)
+        ADD_DEFINITIONS(-DCURL_STATICLIB)
+        SET(TARGET_EXTERNAL_LIBRARIES ${TARGET_EXTERNAL_LIBRARIES} ws2_32 winmm wldap32)
+        message( STATUS "extlibs = ${TARGET_EXTERNAL_LIBRARIES}" )
+    ENDIF(CURL_IS_STATIC)
 ENDIF(WIN32)
 
 #LINK_WITH_VARIABLES(${LIB_NAME} OSG_LIBRARY OSGUTIL_LIBRARY OSGSIM_LIBRARY OSGTERRAIN_LIBRARY OSGDB_LIBRARY OSGFX_LIBRARY OSGVIEWER_LIBRARY OSGTEXT_LIBRARY OSGGA_LIBRARY OSGSHADOW_LIBRARY OPENTHREADS_LIBRARY CURL_LIBRARY GDAL_LIBRARY ZLIB_LIBRARY)
