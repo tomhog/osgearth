@@ -91,8 +91,8 @@ void DemoScene::initDemo(const std::string &file)
     osgEarth::Util::SkyNode* sky = new osgEarth::Util::SkyNode( mapNode->getMap() );
     sky->setAmbientBrightness( ambientBrightness );
     sky->setDateTime( 1984, 11, 8, hours );
-    //sky->attach( _viewer, 0 );
-    //root->addChild( sky );
+    sky->attach( _viewer, 0 );
+    root->addChild( sky );
     
     
     //for some reason we have to do this as global stateset doesn't

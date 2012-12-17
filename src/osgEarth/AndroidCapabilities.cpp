@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
-#include <osgEarth/Capabilities>
+#include <osgEarth/AndroidCapabilities>
 #include <osg/FragmentProgram>
 #include <osg/GraphicsContext>
 #include <osg/GL>
@@ -27,111 +27,20 @@
 
 using namespace osgEarth;
 
-#define LC "[Capabilities] "
+#define LC "[AndroidCapabilities] "
 
-// ---------------------------------------------------------------------------
-// A custom P-Buffer graphics context that we will use to query for OpenGL 
-// extension and hardware support. (Adapted from osgconv in OpenSceneGraph)
-
-struct MyGraphicsContext
-{
-    MyGraphicsContext()
-    {
-        osg::ref_ptr<osg::GraphicsContext::Traits> traits = new osg::GraphicsContext::Traits;
-        traits->x = 0;
-        traits->y = 0;
-        traits->width = 1;
-        traits->height = 1;
-        traits->windowDecoration = false;
-        traits->doubleBuffer = false;
-        traits->sharedContext = 0;
-        traits->pbuffer = false;
-
-        // Intel graphics adapters dont' support pbuffers, and some of their drivers crash when
-        // you try to create them. So by default we will only use the unmapped/pbuffer method
-        // upon special request.
-        if ( getenv( "OSGEARTH_USE_PBUFFER_TEST" ) )
-        {
-            traits->pbuffer = true;
-            OE_INFO << LC << "Activating pbuffer test for graphics capabilities" << std::endl;
-            _gc = osg::GraphicsContext::createGraphicsContext(traits.get());
-            if ( !_gc.valid() )
-                OE_WARN << LC << "Failed to create pbuffer" << std::endl;
-        }
-
-        if (!_gc.valid())
-        {
-            // fall back on a mapped window
-            traits->pbuffer = false;
-            _gc = osg::GraphicsContext::createGraphicsContext(traits.get());
-        }
-
-        if (_gc.valid()) 
-        {
-            _gc->realize();
-            _gc->makeCurrent();
-
-            if ( traits->pbuffer == false )
-            {
-                OE_DEBUG << LC << "Realized graphics window for OpenGL operations." << std::endl;
-            }
-            else
-            {
-                OE_DEBUG << LC << "Realized pbuffer for OpenGL operations." << std::endl;
-            }
-        }
-        else
-        {
-            OE_WARN << LC << "Failed to create graphic window too." << std::endl;
-        }
-    }
-
-    bool valid() const { return _gc.valid() && _gc->isRealized(); }
-
-    osg::ref_ptr<osg::GraphicsContext> _gc;
-};
 
 // ---------------------------------------------------------------------------
 
 #define SAYBOOL(X) (X?"yes":"no")
 
-Capabilities::Capabilities() :
-_maxFFPTextureUnits     ( 1 ),
-_maxGPUTextureUnits     ( 1 ),
-_maxGPUTextureCoordSets ( 1 ),
-_maxTextureSize         ( 256 ),
-_maxFastTextureSize     ( 256 ),
-_maxLights              ( 1 ),
-_depthBits              ( 0 ),
-_supportsGLSL           ( false ),
-_GLSLversion            ( 1.0f ),
-_supportsTextureArrays  ( false ),
-_supportsMultiTexture   ( false ),
-_supportsStencilWrap    ( true ),
-_supportsTwoSidedStencil( false ),
-_supportsTexture2DLod   ( false ),
-_supportsMipmappedTextureUpdates( false ),
-_supportsDepthPackedStencilBuffer( false ),
-_supportsOcclusionQuery ( false ),
-_supportsDrawInstanced  ( false ),
-_supportsUniformBufferObjects( false ),
-_maxUniformBlockSize    ( 0 )
+AndroidCapabilities::AndroidCapabilities() :
+Capabilities()
 {
-    // little hack to force the osgViewer library to link so we can create a graphics context
-    osgViewerGetVersion();
-
-    // check the environment in order to disable ATI workarounds
-    bool enableATIworkarounds = true;
-    if ( ::getenv( "OSGEARTH_DISABLE_ATI_WORKAROUNDS" ) != 0L )
-        enableATIworkarounds = false;
-
-    // create a graphics context so we can query OpenGL support:
-    MyGraphicsContext mgc;
-
-    if ( mgc.valid() )
+    //if ( mgc.valid() )
     {
-        osg::GraphicsContext* gc = mgc._gc.get();
-        unsigned int id = gc->getState()->getContextID();
+        //osg::GraphicsContext* gc = mgc._gc.get();
+        unsigned int id = 0;//gc->getState()->getContextID();
         const osg::GL2Extensions* GL2 = osg::GL2Extensions::Get( id, true );
 
         OE_INFO << LC << "Detected hardware capabilities:" << std::endl;
@@ -256,7 +165,7 @@ _maxUniformBlockSize    ( 0 )
         // ATI workarounds:
         bool isATI = _vendor.find("ATI ") == 0;
 
-        _supportsMipmappedTextureUpdates = isATI && enableATIworkarounds ? false : true;
+        _supportsMipmappedTextureUpdates = false;//isATI && enableATIworkarounds ? false : true;
         OE_INFO << LC << "  Mipmapped texture updates = " << SAYBOOL(_supportsMipmappedTextureUpdates) << std::endl;
 
 #if 0

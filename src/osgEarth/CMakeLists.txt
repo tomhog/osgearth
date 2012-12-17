@@ -13,6 +13,7 @@ SET(LIB_NAME osgEarth)
 
 SET(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
 SET(TARGET_H
+    AndroidCapabilities
     Bounds
     Cache
     CacheBin
@@ -134,6 +135,7 @@ ENDIF (NOT TINYXML_FOUND)
 #    ${LIB_PUBLIC_HEADERS}
 SET(TARGET_SRC
     ${TINYXML_SRC}
+    AndroidCapabilities.cpp
     Bounds.cpp
     Cache.cpp
     CachePolicy.cpp

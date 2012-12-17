@@ -5,7 +5,11 @@
 
 #include "DemoScene.h"
 
+#ifndef ANDROID
 #include <osgViewer/api/IOS/GraphicsWindowIOS>
+#else
+#include <osgEarth/AndroidCapabilities>
+#endif
 #include "OsgAndroidNotifyHandler.hpp"
 
 DemoScene::DemoScene()
@@ -21,8 +25,6 @@ DemoScene::~DemoScene()
 
 void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
 {
-    //osgEarth::Registry::instance()->setDefaultTerrainEngineDriverName("quadtree");
-
 	OsgAndroidNotifyHandler* notifyHandler = new OsgAndroidNotifyHandler();
 	notifyHandler->setTag("osgEarth Viewer");
     osg::setNotifyHandler(notifyHandler);
@@ -30,6 +32,10 @@ void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
 
     osg::setNotifyLevel(osg::INFO);
     osgEarth::setNotifyLevel(osg::INFO);
+
+    //osgEarth::Registry::instance()->setDefaultTerrainEngineDriverName("quadtree");
+	osgEarth::Registry::instance()->setCapabilities(new osgEarth::AndroidCapabilities());
+
     
     //create the viewer
 	_viewer = new osgViewer::Viewer();
