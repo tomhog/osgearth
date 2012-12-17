@@ -16,6 +16,7 @@ SET(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
 SET(TARGET_H
     AlphaEffect
     AutoScale
+    AndroidCapabilities
     Bounds
     Cache
     CacheEstimator
@@ -165,6 +166,7 @@ SET(TARGET_SRC
     ${VERSION_GIT_SOURCE}
     AlphaEffect.cpp
     AutoScale.cpp
+    AndroidCapabilities.cpp
     Bounds.cpp
     Cache.cpp
     CacheEstimator.cpp
