@@ -175,6 +175,147 @@ namespace
 
         return geom;
     }
+    
+    struct ClampAtmosphereProjectionMatrixCallback : public osg::CullSettings::ClampProjectionMatrixCallback
+    {
+        osg::Camera* p_camera;
+        double _atmosRadius;
+        
+        ClampAtmosphereProjectionMatrixCallback(osg::Camera* camera, double atmosRadius=1000.0f) : p_camera(camera), _atmosRadius(atmosRadius) { }
+        
+        // NOTE: this code is just copied from CullVisitor. I could not find a way to simply
+        // call into it from a custom callback..
+        template<class matrix_type, class value_type>
+        bool _clampProjectionMatrix(matrix_type& projection, double& znear, double& zfar, value_type nearFarRatio) const
+        {
+            double epsilon = 1e-6;
+            if (zfar<znear-epsilon)
+            {
+                OSG_INFO<<"_clampProjectionMatrix not applied, invalid depth range, znear = "<<znear<<"  zfar = "<<zfar<<std::endl;
+                return false;
+            }
+            
+            if (zfar<znear+epsilon)
+            {
+                // znear and zfar are too close together and could cause divide by zero problems
+                // late on in the clamping code, so move the znear and zfar apart.
+                double average = (znear+zfar)*0.5;
+                znear = average-epsilon;
+                zfar = average+epsilon;
+                // OSG_INFO << "_clampProjectionMatrix widening znear and zfar to "<<znear<<" "<<zfar<<std::endl;
+            }
+            
+            if (fabs(projection(0,3))<epsilon  && fabs(projection(1,3))<epsilon  && fabs(projection(2,3))<epsilon )
+            {
+                // OSG_INFO << "Orthographic matrix before clamping"<<projection<<std::endl;
+                
+                value_type delta_span = (zfar-znear)*0.02;
+                if (delta_span<1.0) delta_span = 1.0;
+                value_type desired_znear = znear - delta_span;
+                value_type desired_zfar = zfar + delta_span;
+                
+                // assign the clamped values back to the computed values.
+                znear = desired_znear;
+                zfar = desired_zfar;
+                
+                projection(2,2)=-2.0f/(desired_zfar-desired_znear);
+                projection(3,2)=-(desired_zfar+desired_znear)/(desired_zfar-desired_znear);
+                
+                //OE_INFO << "Orthographic matrix after clamping, near=" << desired_znear << ", far=" << desired_zfar << std::endl;
+            }
+            else
+            {
+                
+                // OSG_INFO << "Persepective matrix before clamping"<<projection<<std::endl;
+                
+                //std::cout << "_computed_znear"<<_computed_znear<<std::endl;
+                //std::cout << "_computed_zfar"<<_computed_zfar<<std::endl;
+                
+                value_type zfarPushRatio = 1.02;
+                value_type znearPullRatio = 0.98;
+                
+                //znearPullRatio = 0.99;
+                
+                value_type desired_znear = znear * znearPullRatio;
+                value_type desired_zfar = zfar * zfarPushRatio;
+                
+                // near plane clamping.
+                double min_near_plane = zfar*nearFarRatio;
+                
+                //// GW: changed this to enforce the NF ratio.
+                if (desired_znear<min_near_plane) desired_znear=min_near_plane;
+                //if (desired_znear > min_near_plane) desired_znear=min_near_plane;
+                
+                if ( desired_znear < 1.0 )
+                    desired_znear = 1.0;
+                
+#if 0
+                OE_INFO << std::fixed
+                << "nfr=" << nearFarRatio << ", znear=" << znear << ", zfar=" << zfar
+                << ", dznear=" << desired_znear << ", dzfar=" << desired_zfar
+                << std::endl;
+#endif
+                
+                // assign the clamped values back to the computed values.
+                znear = desired_znear;
+                zfar = desired_zfar;
+                
+                
+                value_type trans_near_plane = (-desired_znear*projection(2,2)+projection(3,2))/(-desired_znear*projection(2,3)+projection(3,3));
+                value_type trans_far_plane = (-desired_zfar*projection(2,2)+projection(3,2))/(-desired_zfar*projection(2,3)+projection(3,3));
+                
+                value_type ratio = fabs(2.0/(trans_near_plane-trans_far_plane));
+                value_type center = -(trans_near_plane+trans_far_plane)/2.0;
+                
+                projection.postMult(osg::Matrix(1.0f,0.0f,0.0f,0.0f,
+                                                0.0f,1.0f,0.0f,0.0f,
+                                                0.0f,0.0f,ratio,0.0f,
+                                                0.0f,0.0f,center*ratio,1.0f));
+                
+                // OSG_INFO << "Persepective matrix after clamping"<<projection<<std::endl;
+            }
+            return true;
+        }
+        
+        
+        bool clampProjectionMatrixImplementation(osg::Matrixf& projection, double& znear, double& zfar) const
+        {
+            //project atmosphere center into camera space
+            osg::Vec3 center = p_camera->getViewMatrix()*osg::Vec3(0,0,0);
+            //get distance to center for near
+            double n = center.length();
+            double f = n + _atmosRadius;
+            if(n<_atmosRadius){
+                n = 0.0f;
+                f=_atmosRadius;
+            }
+            bool r = _clampProjectionMatrix( projection, n, f, 0.00015 );
+            if ( r ) {
+                znear = n;
+                zfar = f;
+            }
+            return r;
+        }
+        
+        bool clampProjectionMatrixImplementation(osg::Matrixd& projection, double& znear, double& zfar) const
+        {
+            //project atmosphere center into camera space
+            osg::Vec3 center = p_camera->getViewMatrix()*osg::Vec3(0,0,0);
+            //get distance to center for near
+            double n = center.length();
+            double f = n + _atmosRadius;
+            if(n<_atmosRadius){
+                n = 0.0f;
+                f=_atmosRadius;
+            }
+            bool r = _clampProjectionMatrix( projection, n, f, 0.00015 );
+            if ( r ) {
+                znear = n;
+                zfar = f;
+            }
+            return r;
+        }
+    };
 }
 
 //---------------------------------------------------------------------------
@@ -574,13 +715,14 @@ namespace
     static char s_atmosphereFragmentMain[] =
         "void main(void) \n"			
         "{ \n"				
-        "    float fCos = dot(atmos_v3LightPos, atmos_v3Direction) / length(atmos_v3Direction); \n"
-        "    float fRayleighPhase = 1.0; \n" // 0.75 * (1.0 + fCos*fCos); \n"
-        "    float fMiePhase = 1.5 * ((1.0 - atmos_g2) / (2.0 + atmos_g2)) * (1.0 + fCos*fCos) / fastpow(1.0 + atmos_g2 - 2.0*atmos_g*fCos, 1.5); \n"
-        "    vec3 f4Color = fRayleighPhase * atmos_rayleighColor + fMiePhase * atmos_mieColor; \n"
-        "    vec3 color = 1.0 - exp(f4Color * -fExposure); \n"
-        "    gl_FragColor.rgb = color.rgb*atmos_fWeather; \n"
-        "    gl_FragColor.a = (color.r+color.g+color.b) * 2.0; \n"
+        "    highp float fCos = dot(atmos_v3LightPos, atmos_v3Direction) / length(atmos_v3Direction); \n"
+        "    highp float fRayleighPhase = 1.0; \n" // 0.75 * (1.0 + fCos*fCos); \n"
+        "    highp float fMiePhase = 1.5 * ((1.0 - atmos_g2) / (2.0 + atmos_g2)) * (1.0 + fCos*fCos) / fastpow(1.0 + atmos_g2 - 2.0*atmos_g*fCos, 1.5); \n"
+        "    highp vec3 f4Color = fRayleighPhase * atmos_rayleighColor + fMiePhase * atmos_mieColor; \n"
+        "    highp vec3 color = 1.0 - exp(f4Color * -fExposure); \n"
+        "    gl_FragColor.rgb = f4Color;//clamp(color.rgb*atmos_fWeather, 0.1, 1.0); \n"
+        "    gl_FragColor.a = 1.0;//clamp((color.r+color.g+color.b) * 2.0, 0.0, 1.0); \n"
+        "    //gl_FragColor = vec4(0.0,0.0,1.0,1.0);\n"
         "} \n";
 
     static char s_sunVertexSource[] = 
@@ -771,7 +913,7 @@ SkyNode::initialize( Map *map, const std::string& starFile )
     }
 
     makeStars(starFile);
-
+    int y=0;y++;
     //Set a default time
     setDateTime( 2011, 3, 6, 18 );
 }
@@ -1262,6 +1404,7 @@ SkyNode::makeAtmosphere( const osg::EllipsoidModel* em )
     cam->getOrCreateStateSet()->setRenderBinDetails( BIN_ATMOSPHERE, "RenderBin" );
     cam->setRenderOrder( osg::Camera::NESTED_RENDER );
     cam->setComputeNearFarMode( osg::CullSettings::COMPUTE_NEAR_FAR_USING_BOUNDING_VOLUMES );
+    //cam->setClampProjectionMatrixCallback(new ClampAtmosphereProjectionMatrixCallback(cam, _outerRadius));
     cam->addChild( geode );
 
     _atmosphere = cam;

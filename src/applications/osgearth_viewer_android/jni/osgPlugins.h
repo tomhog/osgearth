@@ -1,6 +1,6 @@
 #pragma once 
 
-//This file is used to force the linking of the osg and hogbox plugins
+//This file is used to force the linking of the osg and osgearth plugins
 //as we our doing a static build we can't depend on the loading of the
 //dynamic libs to add the plugins to the registries
 

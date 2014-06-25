@@ -31,7 +31,7 @@ void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
     osgEarth::setNotifyHandler(notifyHandler);
 
     osg::setNotifyLevel(osg::INFO);
-    osgEarth::setNotifyLevel(osg::INFO);
+    osgEarth::setNotifyLevel(osg::FATAL);
 
     //osgEarth::Registry::instance()->setDefaultTerrainEngineDriverName("quadtree");
 	osgEarth::Registry::instance()->setCapabilities(new osgEarth::AndroidCapabilities());
