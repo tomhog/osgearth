@@ -54,8 +54,8 @@ LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
 -losgdb_osgearth_gdal \
 -losgdb_osgearth_yahoo \
 -losgdb_osgearth_osg \
--losgdb_osgearth_engine_mp \
--losgdb_osgearth_engine_byo \
+-losgdb_osgearth_engine_osgterrain \
+-losgdb_osgearth_engine_quadtree \
 -losgdb_osgearth_feature_wfs \
 -losgdb_osgearth_feature_tfs \
 -losgdb_osgearth_tms \
@@ -70,6 +70,7 @@ LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
 -losgdb_osgearth_vdatum_egm2008 \
 -losgdb_osgearth_model_simple \
 -losgdb_osgearth_vdatum_egm96 \
+-losgdb_osgearth_ocean_surface \
 -losgdb_osgearth_debug \
 -losgdb_osgearth_mbtiles \
 -losgdb_osgearth_vdatum_egm84 \

@@ -35,9 +35,20 @@ USE_OSGPLUGIN(trans)
 
 
 //image files
+<<<<<<< HEAD
 USE_OSGPLUGIN(png)
 USE_OSGPLUGIN(tiff)
 USE_OSGPLUGIN(jpeg)
+=======
+#ifndef ANDROID
+USE_OSGPLUGIN(tiff)
+USE_OSGPLUGIN(imageio)
+#else
+USE_OSGPLUGIN(png)
+USE_OSGPLUGIN(tiff)
+USE_OSGPLUGIN(jpeg)
+#endif
+>>>>>>> 32e627393339eb7fedb795b4029528a8b60b083e
 
 //USE_OSGPLUGIN(zip) //didn't build on Android for some reason
 USE_OSGPLUGIN(curl)

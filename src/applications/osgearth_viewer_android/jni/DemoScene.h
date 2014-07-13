@@ -17,7 +17,7 @@
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/AutoClipPlaneHandler>
 #include <osgEarthUtil/ObjectLocator>
-#include <osgEarthUtil/Sky>
+#include <osgEarthUtil/SkyNode>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 

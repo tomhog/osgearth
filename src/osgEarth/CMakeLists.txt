@@ -16,7 +16,6 @@ SET(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
 SET(TARGET_H
     AlphaEffect
     AutoScale
-    AndroidCapabilities
     Bounds
     Cache
     CacheEstimator
@@ -143,6 +142,7 @@ IF (NOT TINYXML_FOUND)
     )
 ENDIF (NOT TINYXML_FOUND)
 
+
 SET(VERSION_GIT_SOURCE "")
 IF (OSGEARTH_EMBED_GIT_SHA)
 	ADD_DEFINITIONS(-DOSGEARTH_EMBED_GIT_SHA)
@@ -166,7 +166,6 @@ SET(TARGET_SRC
     ${VERSION_GIT_SOURCE}
     AlphaEffect.cpp
     AutoScale.cpp
-    AndroidCapabilities.cpp
     Bounds.cpp
     Cache.cpp
     CacheEstimator.cpp
