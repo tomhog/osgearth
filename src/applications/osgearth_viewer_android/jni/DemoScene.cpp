@@ -87,8 +87,8 @@ void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
     _viewer->getCamera()->setProjectionMatrixAsPerspective(45.0f,(float)viewSize.x()/viewSize.y(),
                                                            0.1, 1000.0);
     
-    //
-    _viewer->getEventQueue()->getCurrentEventState()->setMouseYOrientation(osgGA::GUIEventAdapter::Y_INCREASING_UPWARDS);
+    //Why is changing this having no effect on the manipulator?
+    //_viewer->getEventQueue()->getCurrentEventState()->setMouseYOrientation(osgGA::GUIEventAdapter::Y_INCREASING_DOWNWARDS);
     
     // configure the near/far so we don't clip things that are up close
     _viewer->getCamera()->setNearFarRatio(0.00002);
@@ -103,19 +103,21 @@ void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
     _viewer->getDatabasePager()->setDoPreCompile( true );
     _viewer->getDatabasePager()->setTargetMaximumNumberOfPageLOD(0);
     _viewer->getDatabasePager()->setUnrefImageDataAfterApplyPolicy(true,true);
-    //_viewer->setRunFrameScheme( osgViewer::ViewerBase::ON_DEMAND );
     
+    //this causes flickering
+    //_viewer->setRunFrameScheme( osgViewer::ViewerBase::ON_DEMAND );
+
     //init scene
     this->initDemo(file);
 }
 
 void DemoScene::frame()
 {
-    //if (_viewer->getRunFrameScheme() == osgViewer::ViewerBase::CONTINUOUS ||
-      //  _viewer->checkNeedToDoFrame() )
+    if (_viewer->getRunFrameScheme() == osgViewer::ViewerBase::CONTINUOUS ||
+        _viewer->checkNeedToDoFrame() )
     {
         _viewer->frame();
-    }//else{
+    }else{
 
-    //}
+    }
 }

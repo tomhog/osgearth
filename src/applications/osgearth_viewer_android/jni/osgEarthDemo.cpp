@@ -25,15 +25,11 @@ void DemoScene::initDemo(const std::string &file)
 {
     OSG_ALWAYS << "----osgEarthDemo2----" << std::endl;
     
-    // install our default manipulator (do this before calling load)
-    //_viewer->setCameraManipulator(  new osgEarth::Util::EarthManipulator() );//new osgEarth::Util::EarthMultiTouchManipulator() );
-    //_viewer->setCamera
+   _viewer->setCameraManipulator(new osgEarth::Util::EarthManipulator());
 
     osg::Node* node = osgDB::readNodeFile("/storage/sdcard0/Download/tests/gdal_tiff.earth");//nexus7
     if(!node) node = osgDB::readNodeFile("/sdcard/Download/tests/gdal_tiff.earth");//Galaxy nexus
-    if(!node) node = osgDB::readNodeFile("/mnt/sdcard/download/tests/readymap.earth");//S2
-    if(!node) node = osgDB::readNodeFile("/mnt/sdcard/download/data/boxman.osg");//S2
-    if(!node) node = osgDB::readNodeFile("/mnt/sdcard/external_sd/tests/readymap.earth");//S2
+    if(!node) node = osgDB::readNodeFile("/mnt/sdcard/download/tests/gdal_tiff.earth");//Galaxy S2
     if ( !node )
     {
         OSG_ALWAYS << "Unable to load an earth file from the command line." << std::endl;
@@ -58,12 +54,14 @@ void DemoScene::initDemo(const std::string &file)
     osg::Group* root = new osg::Group();
     root->addChild( mapNode.get() );
 
+    /*
     osg::Node* model = osgDB::readNodeFile("/storage/sdcard0/Download/data/tree.osg");
     osgUtil::GLES2ShaderGenVisitor shaderGen;
 	model->accept(shaderGen);
     root->addChild(model);
 
-    _viewer->setCameraManipulator(  new osgGA::MultiTouchTrackballManipulator() );
+    //_viewer->setCameraManipulator(  new osgGA::MultiTouchTrackballManipulator() );
+	*/
 
     osg::Light* light = new osg::Light( 0 );
     light->setPosition( osg::Vec4(0, -1, 0, 0 ) );
