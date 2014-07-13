@@ -11,17 +11,6 @@
 
 //
 #include <osgDB/FileUtils>
-
-
-#include <osgEarth/Viewpoint>
-#include <osgEarthUtil/EarthManipulator>
-#include <osgEarthUtil/AutoClipPlaneHandler>
-#include <osgEarthUtil/ObjectLocator>
-#include <osgEarthUtil/Sky>
-#include <osgEarthUtil/EarthManipulator>
-#include <osgEarthUtil/ExampleResources>
-
-#include "EarthMultiTouchManipulator.h"
 #include "GLES2ShaderGenVisitor.h"
 //
 
