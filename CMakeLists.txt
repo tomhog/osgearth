@@ -53,8 +53,6 @@ SET(THIRD_PARTY_DIR "" CACHE PATH "OSG 3rd-party dependency folder")
 SET(CMAKE_MODULE_PATH "${OSGEARTH_SOURCE_DIR}/CMakeModules;${CMAKE_MODULE_PATH}")
 
 
-<<<<<<< HEAD
-
 # Attempt to detect the GIT revision number.
 OPTION(OSGEARTH_EMBED_GIT_SHA "Embeds the GIT SHA in the version code" OFF)
 IF (OSGEARTH_EMBED_GIT_SHA)
@@ -62,8 +60,7 @@ IF (OSGEARTH_EMBED_GIT_SHA)
   get_git_head_revision(GIT_REFSPEC OSGEARTH_GIT_SHA1)
 ENDIF (OSGEARTH_EMBED_GIT_SHA)
 
-=======
->>>>>>> 32e627393339eb7fedb795b4029528a8b60b083e
+
 ## Option to enable Android build using AndroidNDK
 OPTION(OSG_BUILD_PLATFORM_ANDROID OFF)
 IF(OSG_BUILD_PLATFORM_ANDROID)
@@ -165,11 +162,7 @@ IF(OSG_BUILD_PLATFORM_IPHONE OR OSG_BUILD_PLATFORM_IPHONE_SIMULATOR)
 ENDIF()
 
 ENDIF(APPLE AND NOT ANDROID)
-<<<<<<< HEAD
 
-=======
-# IPHONE_PORT@tom
->>>>>>> 32e627393339eb7fedb795b4029528a8b60b083e
 
 # check if STLport is required
 OPTION(USE_STLPORT "Set to ON to build OSGEARTH with stlport instead of the default STL library." OFF)

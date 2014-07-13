@@ -19,7 +19,6 @@
 #include <osgEarthAnnotation/LabelNode>
 #include <osgEarthAnnotation/LocalGeometryNode>
 #include <osgEarthAnnotation/FeatureNode>
-#include <osgEarthAnnotation/Decluttering>
 #include <osgEarthAnnotation/HighlightDecoration>
 #include <osgEarthAnnotation/ScaleDecoration>
 
@@ -98,7 +97,7 @@ void DemoScene::initDemo(const std::string &file)
     material->setDiffuse(osg::Material::FRONT, osg::Vec4(0.9,0.9,0.9,1.0));
     material->setSpecular(osg::Material::FRONT, osg::Vec4(0.4,0.4,0.4,1.0));
     root->getOrCreateStateSet()->setAttribute(material);
-    //root->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    root->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
     
     double hours = 12.0f;
     float ambientBrightness = 0.4f;

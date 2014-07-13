@@ -18,17 +18,21 @@ public final class R {
         public static final int web_browser=0x7f020001;
     }
     public static final class id {
-        public static final int menuChangeBackground=0x7f070006;
-        public static final int menuCleanScene=0x7f070005;
-        public static final int menuDeleteObject=0x7f070004;
-        public static final int menuLoadObject=0x7f070003;
-        public static final int menuShowKeyboard=0x7f070007;
-        public static final int surfaceGLES=0x7f070000;
-        public static final int uiButtonCenter=0x7f070002;
-        public static final int uiNavigation=0x7f070001;
+        public static final int menuChangeBackground=0x7f070008;
+        public static final int menuCleanScene=0x7f070007;
+        public static final int menuDeleteObject=0x7f070006;
+        public static final int menuLoadObject=0x7f070005;
+        public static final int menuShowKeyboard=0x7f070009;
+        public static final int surfaceGLES=0x7f070002;
+        public static final int uiButtonCenter=0x7f070004;
+        public static final int uiEditTextInput=0x7f070001;
+        public static final int uiNavigation=0x7f070003;
+        public static final int uiTextEntryText=0x7f070000;
     }
     public static final class layout {
-        public static final int ui_layout_gles=0x7f030000;
+        public static final int dialog_text_entry=0x7f030000;
+        public static final int main=0x7f030001;
+        public static final int ui_layout_gles=0x7f030002;
     }
     public static final class menu {
         public static final int appmenu=0x7f060000;

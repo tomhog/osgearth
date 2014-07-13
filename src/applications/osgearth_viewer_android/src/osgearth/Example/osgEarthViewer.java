@@ -16,7 +16,7 @@ import android.widget.Button;
 import osgearth.Common.EGLview;
 import osgearth.Common.osgNativeLib;
 
-public class osgViewer extends Activity implements View.OnKeyListener {
+public class osgEarthViewer extends Activity implements View.OnKeyListener {
 	
 	private static final String TAG = "OSG Activity";
 	//Ui elements
