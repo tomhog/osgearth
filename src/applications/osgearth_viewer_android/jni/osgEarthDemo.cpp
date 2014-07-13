@@ -5,25 +5,9 @@
 
 #include "DemoScene.h"
 
-#include <osgEarthUtil/AnnotationEvents>
-#include <osgEarthUtil/AutoClipPlaneHandler>
+#include <osgEarth/MapNode>
 #include <osgEarthUtil/Sky>
 #include <osgEarthUtil/EarthManipulator>
-#include <osgEarthAnnotation/AnnotationEditing>
-#include <osgEarthAnnotation/AnnotationRegistry>
-#include <osgEarthAnnotation/ImageOverlay>
-#include <osgEarthAnnotation/ImageOverlayEditor>
-#include <osgEarthAnnotation/CircleNode>
-#include <osgEarthAnnotation/RectangleNode>
-#include <osgEarthAnnotation/EllipseNode>
-#include <osgEarthAnnotation/PlaceNode>
-#include <osgEarthAnnotation/LabelNode>
-#include <osgEarthAnnotation/LocalGeometryNode>
-#include <osgEarthAnnotation/FeatureNode>
-#include <osgEarthAnnotation/HighlightDecoration>
-#include <osgEarthAnnotation/ScaleDecoration>
-
-#include <osgEarthSymbology/GeometryFactory>
 
 #include <osgDB/ReadFile>
 #include <osgDB/FileUtils>
@@ -32,11 +16,7 @@
 #include "GLES2ShaderGenVisitor.h"
 
 using namespace osgEarth;
-using namespace osgEarth::Annotation;
-using namespace osgEarth::Features;
 using namespace osgEarth::Util;
-//using namespace osgEarth::Util::Controls;
-
 
 //
 //Implement init demo for this target
