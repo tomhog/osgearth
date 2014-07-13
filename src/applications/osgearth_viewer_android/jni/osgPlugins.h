@@ -35,14 +35,9 @@ USE_OSGPLUGIN(trans)
 
 
 //image files
-#ifndef ANDROID
-USE_OSGPLUGIN(tiff)
-USE_OSGPLUGIN(imageio)
-#else
 USE_OSGPLUGIN(png)
 USE_OSGPLUGIN(tiff)
 USE_OSGPLUGIN(jpeg)
-#endif
 
 //USE_OSGPLUGIN(zip) //didn't build on Android for some reason
 USE_OSGPLUGIN(curl)
@@ -65,10 +60,10 @@ USE_OSGPLUGIN(osgearth_feature_ogr)
 USE_OSGPLUGIN(osgearth_model_feature_stencil)
 USE_OSGPLUGIN(osgearth_vdatum_egm2008)
 USE_OSGPLUGIN(osgearth_model_simple)
-//USE_OSGPLUGIN(osgearth_engine_osgterrain)
-USE_OSGPLUGIN(osgearth_engine_quadtree)
+USE_OSGPLUGIN(osgearth_engine_mp)
+USE_OSGPLUGIN(osgearth_engine_byo)
 USE_OSGPLUGIN(osgearth_vdatum_egm96)
-USE_OSGPLUGIN(osgearth_ocean_surface)
+//USE_OSGPLUGIN(osgearth_ocean_surface)
 USE_OSGPLUGIN(osgearth_debug)
 USE_OSGPLUGIN(osgearth_mbtiles)
 USE_OSGPLUGIN(osgearth_vdatum_egm84)

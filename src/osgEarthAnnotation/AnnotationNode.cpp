@@ -421,8 +421,10 @@ AnnotationNode::applyGeneralSymbology(const Style& style)
 
         if ( render->clipPlane().isSet() )
         {
+#if !defined(OSG_GLES2_AVAILABLE)
             GLenum mode = GL_CLIP_PLANE0 + render->clipPlane().value();
             getOrCreateStateSet()->setMode(mode, 1);
+#endif
         }
     }
 }
