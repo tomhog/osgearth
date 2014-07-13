@@ -16,6 +16,7 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved)
 }
 
 extern "C" {
+	JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_surfaceCreated(JNIEnv * env, jobject obj);
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_init(JNIEnv * env, jobject obj, jint width, jint height);
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_step(JNIEnv * env, jobject obj);
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_touchBeganEvent(JNIEnv * env, jobject obj, jint touchid, jfloat x, jfloat y);
@@ -25,9 +26,11 @@ extern "C" {
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_keyboardUp(JNIEnv * env, jobject obj, jint key);
     
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_clearEventQueue(JNIEnv * env, jobject obj);
-    
 };
 
+JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_surfaceCreated(JNIEnv * env, jobject obj){
+    mainApp.surfaceCreated();
+}
 JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_init(JNIEnv * env, jobject obj, jint width, jint height){
     mainApp.initOsgWindow(0,0,width,height);
 }

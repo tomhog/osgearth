@@ -124,6 +124,12 @@ SET(TARGET_H
     XmlUtils
 )
 
+IF (ANDROID)
+    SET(TARGET_H
+        ${TARGET_H}
+        AndroidCapabilities
+    )
+ENDIF (ANDROID)
 
 IF (NOT TINYXML_FOUND)
     SET(TARGET_H
@@ -264,6 +270,13 @@ SET(TARGET_SRC
     VirtualProgram.cpp
     XmlUtils.cpp
 )
+
+IF (ANDROID)
+    SET(TARGET_SRC
+        ${TARGET_SRC}
+        AndroidCapabilities.cpp
+    )
+ENDIF (ANDROID)
 
 INCLUDE_DIRECTORIES(${GDAL_INCLUDE_DIR} ${CURL_INCLUDE_DIR} ${OSG_INCLUDE_DIR} )
 

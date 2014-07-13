@@ -14,6 +14,7 @@ public class osgNativeLib {
     * @param width the current view width
     * @param height the current view height
     */
+	public static native void 		surfaceCreated();
     public static native void 		init(int width, int height);
     public static native void 		step();
     public static native void 		touchBeganEvent(int touchid, float x,float y);

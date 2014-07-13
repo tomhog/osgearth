@@ -1,5 +1,8 @@
 #include "OsgMainApp.hpp"
 
+//#include <osgEarth/Registry>
+//#include <osgEarth/AndroidCapabilities>
+
 OsgMainApp::OsgMainApp(){
 
     _initialized = false;
@@ -11,6 +14,12 @@ OsgMainApp::~OsgMainApp(){
 
 
 //Initialization function
+void OsgMainApp::surfaceCreated()
+{
+	//OSG_ALWAYS << "jni surfaceCreated" << std::endl;
+	//osgEarth::Registry::instance()->setCapabilities(NULL);//new osgEarth::AndroidCapabilities());
+}
+
 void OsgMainApp::initOsgWindow(int x,int y,int width,int height){
 
     __android_log_write(ANDROID_LOG_ERROR, "OSGANDROID",

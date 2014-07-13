@@ -220,6 +220,7 @@ public class EGLview extends GLSurfaceView implements View.OnTouchListener, View
 	        int[] attrib_list = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL10.EGL_NONE };
 	        EGLContext context = egl.eglCreateContext(display, eglConfig, EGL10.EGL_NO_CONTEXT, attrib_list);
 	        checkEglError("After eglCreateContext", egl);
+	        //osgNativeLib.surfaceCreated();
 	        return context;
 	    }
 	
@@ -448,17 +449,20 @@ public class EGLview extends GLSurfaceView implements View.OnTouchListener, View
 	}
 	
 	private static class Renderer implements GLSurfaceView.Renderer {
-	    public void onDrawFrame(GL10 gl) {
+		
+		public void onDrawFrame(GL10 gl) {
 	        osgNativeLib.step();
 	    }
 	
 	    public void onSurfaceChanged(GL10 gl, int width, int height) {
-	        osgNativeLib.init(width, height);
+	    	osgNativeLib.init(width, height);
 	    }
 	
+	    @Override
 	    public void onSurfaceCreated(GL10 gl, EGLConfig config) {
 	        // Do nothing
 	        	gl.glEnable(GL10.GL_DEPTH_TEST);
+	        	//osgNativeLib.surfaceCreated();
 	        }
 	    }
 		    

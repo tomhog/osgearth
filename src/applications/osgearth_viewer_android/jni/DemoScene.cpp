@@ -11,6 +11,7 @@
 #include <osgEarth/AndroidCapabilities>
 #endif
 #include "OsgAndroidNotifyHandler.hpp"
+#include <osgEarth/Registry>
 
 DemoScene::DemoScene()
     :osg::Referenced()
@@ -26,16 +27,14 @@ DemoScene::~DemoScene()
 void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
 {
 	OsgAndroidNotifyHandler* notifyHandler = new OsgAndroidNotifyHandler();
-	notifyHandler->setTag("osgEarth Viewer 4");
+	notifyHandler->setTag("osgEarth Viewer 5");
     osg::setNotifyHandler(notifyHandler);
     osgEarth::setNotifyHandler(notifyHandler);
 
     osg::setNotifyLevel(osg::DEBUG_FP);
     osgEarth::setNotifyLevel(osg::DEBUG_FP);
 
-    //osgEarth::Registry::instance()->setDefaultTerrainEngineDriverName("quadtree");
-	//osgEarth::Registry::instance()->setCapabilities(new osgEarth::AndroidCapabilities());
-
+    osgEarth::Registry::instance()->setCapabilities(new osgEarth::AndroidCapabilities());
     
     //create the viewer
 	_viewer = new osgViewer::Viewer();

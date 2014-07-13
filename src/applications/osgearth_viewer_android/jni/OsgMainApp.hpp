@@ -46,6 +46,7 @@ public:
     ~OsgMainApp();
 
     //Initialization function
+    void surfaceCreated();
     void initOsgWindow(int x,int y,int width,int height);
     //Draw
     void draw();

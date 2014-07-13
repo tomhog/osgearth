@@ -7,12 +7,14 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.View.OnClickListener;
+import android.view.Window;
+import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
-
 import osgearth.Common.EGLview;
 import osgearth.Common.osgNativeLib;
 
@@ -31,6 +33,13 @@ public class osgEarthViewer extends Activity implements View.OnKeyListener {
         Log.w("osgNativeLib", "Lib loaded");
     	
         super.onCreate(icicle);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+        // Create a GLSurfaceView instance and set it as the ContentView for this Activity
+        mView = new EGLview(this);
+        setContentView(mView);
+        /*
         setContentView(R.layout.ui_layout_gles);
         
         //get gl view
@@ -41,6 +50,7 @@ public class osgEarthViewer extends Activity implements View.OnKeyListener {
 		//get center camera button
 	    uiCenterViewButton = (Button) findViewById(R.id.uiButtonCenter);
 	    uiCenterViewButton.setOnClickListener(uiListenerCenterView);
+	    */
 	   
     }
     @Override protected void onPause() {
