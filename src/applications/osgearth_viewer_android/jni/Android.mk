@@ -12,14 +12,15 @@ THIRDPARTY_ANDROID_DIR	:= /Users/thomashogarth/Developer/Android/osg/3rdparty
 
 OSG_LIBDIR 			:= $(OSG_ANDROID_DIR)/obj/local/armeabi
 OSGEARTH_LIBDIR 		:= $(OSGEARTH_ANDROID_DIR)/obj/local/armeabi
-PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
-SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/obj/local/armeabi
+PNG_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/libpng/obj/local/armeabi
+TIFF_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/libtiff/obj/local/armeabi
+GDAL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/gdal/obj/local/armeabi
+GEOS_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/geos/obj/local/armeabi
+PROJ_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/proj/obj/local/armeabi
+CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/curl/obj/local/armeabi
+FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/build/freetype/obj/local/armeabi
+SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/sqlite/obj/local/armeabi
+ZLIB_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/zlib/obj/local/armeabi
 
 ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 	LOCAL_ARM_NEON 	:= true
@@ -33,6 +34,7 @@ ifeq ($(TARGET_ARCH_ABI),armeabi-v7a)
 	CURL_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/curl/obj/local/armeabi-v7a
 	FREETYPE_LIBDIR 		:= $(THIRDPARTY_ANDROID_DIR)/build/freetype/obj/local/armeabi-v7a
 	SQLITE_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/sqlite/obj/local/armeabi-v7a
+	ZLIB_LIBDIR 			:= $(THIRDPARTY_ANDROID_DIR)/build/zlib/obj/local/armeabi-v7a
 endif
 
 ### Add all source file names to be included in lib separated by a whitespace
@@ -42,7 +44,6 @@ LOCAL_CFLAGS    := -Werror -fno-short-enums -DANDROID -DOSGEARTH_LIBRARY_STATIC
 LOCAL_CPPFLAGS  := -DOSG_LIBRARY_STATIC -DOSGEARTH_LIBRARY_STATIC -DANDROID
 
 LOCAL_LDLIBS    := -llog -lGLESv2 -lz -ldl 
-#-lstlport #-fuse-ld=gold
 
 LOCAL_SRC_FILES := osgNativeLib.cpp OsgMainApp.cpp DemoScene.cpp OsgAndroidNotifyHandler.cpp osgEarthDemo.cpp GLES2ShaderGenVisitor.cpp
 
@@ -88,6 +89,7 @@ LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
 -losgEarthUtil \
 -losgEarth \
 -L $(OSG_LIBDIR) \
+-losgdb_zip \
 -losgdb_openflight \
 -losgdb_curl \
 -losgdb_tiff \
@@ -150,7 +152,9 @@ LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
 -L $(PROJ_LIBDIR) \
 -lproj \
 -L $(SQLITE_LIBDIR) \
--lsqlite3
+-lsqlite3 \
+-L $(ZLIB_LIBDIR) \
+-lzlib
 
 LOCAL_LDLIBS += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/libs/armeabi-v7a/libgnustl_static.a
 

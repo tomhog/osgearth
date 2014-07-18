@@ -43,8 +43,7 @@ USE_OSGPLUGIN(png)
 USE_OSGPLUGIN(tiff)
 USE_OSGPLUGIN(jpeg)
 #endif
-
-//USE_OSGPLUGIN(zip) //didn't build on Android for some reason
+USE_OSGPLUGIN(zip) //didn't build on Android for some reason
 USE_OSGPLUGIN(curl)
 USE_OSGPLUGIN(freetype)
 

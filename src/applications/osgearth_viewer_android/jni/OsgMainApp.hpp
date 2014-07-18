@@ -32,6 +32,8 @@ private:
     osg::ref_ptr<DemoScene> _scene;
     int _bufferWidth;
     int _bufferHeight;
+    std::string _dataPath;
+    std::string _packagePath;
     bool _initialized;
     
     //OsgAndroidNotifyHandler *_notifyHandler;

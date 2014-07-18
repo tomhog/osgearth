@@ -68,8 +68,6 @@ JNIEXPORT void JNICALL JNICALL Java_osgearth_Common_osgNativeLib_setDataFilePath
 
     mainApp.setDataPath(std::string(nativeDataPath), std::string(nativePackagePath));
 
-    //OsgModelCache::Inst()->setAndroidAssetEnv(env, assetManager);
-
     //Release Strings to JNI
     env->ReleaseStringUTFChars(packagePath, nativePackagePath);
     env->ReleaseStringUTFChars(dataPath, nativeDataPath);

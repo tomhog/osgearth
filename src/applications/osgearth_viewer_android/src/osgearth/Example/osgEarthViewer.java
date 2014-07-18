@@ -37,6 +37,13 @@ public class osgEarthViewer extends Activity implements View.OnKeyListener {
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
+        //set the data dirs string for android platform
+        //File dataPath = Context.getFilesDir()
+        Context context = getApplicationContext(); // or other way of getting current context
+        String dir = context.getFilesDir().getPath();
+        String packageDir = context.getPackageResourcePath();
+        osgNativeLib.setDataFilePath(dir, packageDir);
+        
         // Create our GLSurfaceview EGLView which calls our native libs init and frame/update functions  
         mView = new EGLview(this);
         setContentView(mView);

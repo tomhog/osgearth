@@ -24,6 +24,7 @@ void OsgMainApp::initOsgWindow(int x,int y,int width,int height)
 {
     //
     _scene = new DemoScene();
+    _scene->setDataPath(_dataPath, _packagePath);
     _scene->init("", osg::Vec2(width, height), 0);
     _bufferWidth = width;
     _bufferHeight = height;
@@ -42,7 +43,7 @@ void OsgMainApp::draw()
 }
 
 //Events
-static bool flipy = true;
+static bool flipy = false;
 void OsgMainApp::touchBeganEvent(int touchid,float x,float y)
 {
     if (!_frameTouchBeganEvents.valid()) {
@@ -99,5 +100,6 @@ void OsgMainApp::clearEventQueue()
 
 void OsgMainApp::setDataPath(std::string dataPath, std::string packagePath)
 {
-	_scene->setDataPath(dataPath, packagePath);
+	_dataPath = dataPath;
+	_packagePath = packagePath;
 }
