@@ -50,6 +50,7 @@ LOCAL_C_INCLUDES += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/include
 LOCAL_C_INCLUDES += $(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.6/libs/armeabi-v7a/include
 
 LOCAL_LDLIBS   += -L $(OSGEARTH_LIBDIR) \
+-losgdb_osgearth_sky_gl \
 -losgdb_osgearth_sky_simple \
 -losgdb_kml \
 -losgdb_osgearth_gdal \

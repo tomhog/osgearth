@@ -62,6 +62,8 @@ TMSTileSource::initialize(const osgDB::Options* dbOptions)
 
     // Is this a new repo? (You can only create a new repo at a local URI.)
     bool isNewRepo = false;
+    //for now lets skip this as the file is in an apk on android so fileExists will fails, maybe skip if archive extension is in path?
+#ifndef ANDROID
     if ( !tmsURI.isRemote() && !osgDB::fileExists(tmsURI.full()) )
     {
         isNewRepo = true;
@@ -72,6 +74,7 @@ TMSTileSource::initialize(const osgDB::Options* dbOptions)
             return Status::Error("Fail: profile required to create new TMS repo");
         }
     }
+#endif
 
     // Take the override profile if one is given
     if ( profile )

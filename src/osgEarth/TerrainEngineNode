@@ -161,6 +161,7 @@ namespace osgEarth
         float                              _verticalScale;
         osg::ref_ptr<Terrain>              _terrainInterface;
         unsigned                           _dirtyCount;
+        UpdateLightingUniformsHelper       _updateLightingUniformsHelper;
         
         enum InitStage {
             INIT_NONE,

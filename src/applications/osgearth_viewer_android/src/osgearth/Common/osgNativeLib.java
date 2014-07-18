@@ -3,12 +3,6 @@ package osgearth.Common;
 import android.util.Log;
 
 public class osgNativeLib {
-	
-	static {
-//		Log.w("osgNativeLib", "About to load lib");
-//        System.loadLibrary("osgNativeLib");
-//        Log.w("osgNativeLib", "Lib loaded");
-    }
 
    /**
     * @param width the current view width
@@ -23,5 +17,6 @@ public class osgNativeLib {
     public static native void 		keyboardDown(int key);
     public static native void 		keyboardUp(int key);
     public static native void 		clearEventQueue();
+    public static native void 		setDataFilePath(String dataPath, String packagePath);
 
 }

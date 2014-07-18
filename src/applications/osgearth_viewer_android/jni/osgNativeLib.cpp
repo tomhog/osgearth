@@ -26,6 +26,8 @@ extern "C" {
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_keyboardUp(JNIEnv * env, jobject obj, jint key);
     
     JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_clearEventQueue(JNIEnv * env, jobject obj);
+
+    JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_setDataFilePath(JNIEnv * env, jobject obj, jstring dataPath, jstring packagePath, jobject assetManager);
 };
 
 JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_surfaceCreated(JNIEnv * env, jobject obj){
@@ -56,4 +58,19 @@ JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_keyboardUp(JNIEnv * env
 JNIEXPORT void JNICALL Java_osgearth_Common_osgNativeLib_clearEventQueue(JNIEnv * env, jobject obj)
 {
     mainApp.clearEventQueue();
+}
+
+JNIEXPORT void JNICALL JNICALL Java_osgearth_Common_osgNativeLib_setDataFilePath(JNIEnv * env, jobject obj, jstring dataPath, jstring packagePath, jobject assetManager)
+{
+    //Import Strings from JNI
+    const char *nativeDataPath = env->GetStringUTFChars(dataPath, JNI_FALSE);
+    const char *nativePackagePath = env->GetStringUTFChars(packagePath, JNI_FALSE);
+
+    mainApp.setDataPath(std::string(nativeDataPath), std::string(nativePackagePath));
+
+    //OsgModelCache::Inst()->setAndroidAssetEnv(env, assetManager);
+
+    //Release Strings to JNI
+    env->ReleaseStringUTFChars(packagePath, nativePackagePath);
+    env->ReleaseStringUTFChars(dataPath, nativeDataPath);
 }

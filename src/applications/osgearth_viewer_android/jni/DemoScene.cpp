@@ -9,8 +9,9 @@
 #include <osgViewer/api/IOS/GraphicsWindowIOS>
 #else
 #include <osgEarth/AndroidCapabilities>
-#endif
 #include "OsgAndroidNotifyHandler.hpp"
+#endif
+
 #include <osgEarth/Registry>
 
 DemoScene::DemoScene()
@@ -26,15 +27,27 @@ DemoScene::~DemoScene()
 
 void DemoScene::init(const std::string& file, osg::Vec2 viewSize, UIView* view)
 {
+#ifdef ANDROID
 	OsgAndroidNotifyHandler* notifyHandler = new OsgAndroidNotifyHandler();
 	notifyHandler->setTag("osgEarth Viewer 5");
     osg::setNotifyHandler(notifyHandler);
     osgEarth::setNotifyHandler(notifyHandler);
+#endif
 
     osg::setNotifyLevel(osg::DEBUG_FP);
     osgEarth::setNotifyLevel(osg::DEBUG_FP);
 
+#ifdef ANDROID
     osgEarth::Registry::instance()->setCapabilities(new osgEarth::AndroidCapabilities());
+
+    //make zip plugin suport apk extension
+    osgDB::ReaderWriter* zipReader = osgDB::Registry::instance()->getReaderWriterForExtension("zip");
+    if(zipReader)
+    {
+    	zipReader->supportsExtension("apk", "Android package");
+    	osgDB::Registry::instance()->addArchiveExtension("apk");
+    }
+#endif
     
     //create the viewer
 	_viewer = new osgViewer::Viewer();
@@ -120,3 +133,10 @@ void DemoScene::frame()
 
     }
 }
+
+void DemoScene::setDataPath(std::string dataPath, std::string packagePath)
+{
+	_dataPath = dataPath;
+	_packagePath = packagePath;
+}
+

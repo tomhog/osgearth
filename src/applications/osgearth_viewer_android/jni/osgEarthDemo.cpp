@@ -23,13 +23,43 @@ using namespace osgEarth::Util;
 //
 void DemoScene::initDemo(const std::string &file)
 {
-    OSG_ALWAYS << "----osgEarthDemo2----" << std::endl;
+    OSG_ALWAYS << "osgEarthDemo: initDemo" << std::endl;
     
    _viewer->setCameraManipulator(new osgEarth::Util::EarthManipulator());
 
-    osg::Node* node = osgDB::readNodeFile("/storage/sdcard0/Download/tests/gdal_tiff.earth");//nexus7
+   std::string testFile = "gdal_tiff.earth";
+   std::string pathToData = "";
+
+   if(osgDB::Registry::instance()->getReaderWriterForExtension("zip"))
+   {
+	   //if we have the zip plugin load the assets from inside the apk (place the tests and data folders in you Android projects assets folder)
+	   pathToData = _packagePath + "/assets";
+   }else{
+       //get the path to this devices downloads folder on the sdcard (place the tests and data folders into your sdcards downloads folder)
+	   std::vector<std::string> downloadsPaths;
+	   downloadsPaths.push_back("/storage/sdcard0/Download");//nexus7
+	   downloadsPaths.push_back("/sdcard/Download");//Galaxy nexus
+	   downloadsPaths.push_back("/mnt/sdcard/download");//Galaxy S2
+	   for(unsigned int i=0; i<downloadsPaths.size(); i++)
+	   {
+		   if(osgDB::fileExists(downloadsPaths[i]))
+		   {
+			   pathToData = downloadsPaths[i];
+			   break;
+		   }
+
+	   }
+   }
+
+   std::string testFilePath = pathToData + "/tests/" + testFile;
+
+   OSG_ALWAYS << "Attempting to load osgearth test file '" << testFilePath << "'" << std::endl;
+   osg::Node* node = osgDB::readNodeFile(testFilePath);
+
+	/*osg::Node* node = osgDB::readNodeFile("/storage/sdcard0/Download/tests/gdal_tiff.earth");//nexus7
     if(!node) node = osgDB::readNodeFile("/sdcard/Download/tests/gdal_tiff.earth");//Galaxy nexus
     if(!node) node = osgDB::readNodeFile("/mnt/sdcard/download/tests/gdal_tiff.earth");//Galaxy S2
+    */
     if ( !node )
     {
         OSG_ALWAYS << "Unable to load an earth file from the command line." << std::endl;
@@ -52,7 +82,7 @@ void DemoScene::initDemo(const std::string &file)
     
     // a root node to hold everything:
     osg::Group* root = new osg::Group();
-    root->addChild( mapNode.get() );
+    //root->addChild( mapNode.get() );
 
     /*
     osg::Node* model = osgDB::readNodeFile("/storage/sdcard0/Download/data/tree.osg");
@@ -68,15 +98,16 @@ void DemoScene::initDemo(const std::string &file)
     light->setAmbient( osg::Vec4(0.4f, 0.4f, 0.4f ,1.0) );
     light->setDiffuse( osg::Vec4(1,1,1,1) );
     light->setSpecular( osg::Vec4(0,0,0,1) );
-    root->getOrCreateStateSet()->setAttribute(light);
+    //root->getOrCreateStateSet()->setAttribute(light);
+    //_viewer->setLight(light);
     
     //have to add these
     osg::Material* material = new osg::Material();
     material->setAmbient(osg::Material::FRONT, osg::Vec4(0.4,0.4,0.4,1.0));
     material->setDiffuse(osg::Material::FRONT, osg::Vec4(0.9,0.9,0.9,1.0));
     material->setSpecular(osg::Material::FRONT, osg::Vec4(0.4,0.4,0.4,1.0));
-    root->getOrCreateStateSet()->setAttribute(material);
-    //root->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+    //root->getOrCreateStateSet()->setAttribute(material);
+    mapNode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::ON | osg::StateAttribute::OVERRIDE);
     
     double hours = 12.0f;
     float ambientBrightness = 0.4f;
@@ -85,11 +116,11 @@ void DemoScene::initDemo(const std::string &file)
     sky->setDateTime( DateTime(2011, 3, 6, hours) );
     sky->attach( _viewer, 0 );
     root->addChild( sky );
-    
+    sky->addChild(mapNode);
     
     //for some reason we have to do this as global stateset doesn't
     //appear to be in the statesetstack
-    root->getOrCreateStateSet()->setAttribute(_viewer->getLight());
+    //root->getOrCreateStateSet()->setAttribute(_viewer->getLight());
     
     _viewer->setSceneData( root );
 

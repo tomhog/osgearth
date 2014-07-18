@@ -34,10 +34,7 @@ public:
         return _viewer.get();
     }
     
-    //return the skynode
-    /*osgEarth::Util::SkyNode* getSkyNode(){
-        return _sky.get();
-    }*/
+    void setDataPath(std::string dataPath, std::string packagePath);
     
 protected:
     virtual ~DemoScene();
@@ -51,8 +48,10 @@ protected:
     
     osg::ref_ptr<osgViewer::Viewer> _viewer;
     
-    //for convenience, not all demos use it
-    //osg::ref_ptr<osgEarth::Util::SkyNode> _sky;
+    //paths for android
+    std::string _dataPath;
+    std::string _packagePath;
+
 };
 
 

@@ -315,6 +315,14 @@ TerrainEngineNode::traverse( osg::NodeVisitor& nv )
                 }
             }
         }
+        
+#if defined(OSG_GLES2_AVAILABLE)
+        //not 100% sure on this need to test, but things are working now
+        if ( Registry::capabilities().supportsGLSL() )
+        {
+            _updateLightingUniformsHelper.cullTraverse( this, &nv );
+        }
+#ENDIF
     }
 
     else if ( nv.getVisitorType() == osg::NodeVisitor::EVENT_VISITOR )

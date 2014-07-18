@@ -414,7 +414,11 @@ namespace osgEarth { namespace Drivers { namespace SimpleSky
         "        vec3 V = normalize(atmos_vert); \n"
         "        vec3 H = normalize(L-V); \n"
         "        float HdotN = max(dot(H,N), 0.0); \n"
-        "        float shine = clamp(gl_FrontMaterial.shininess, 1.0, 128.0); \n"
+#ifdef OSG_GLES2_AVAILABLE
+	"        float shine = 64.0;//clamp(64.0, 1.0, 128.0); \n"
+#else
+	"        float shine = clamp(gl_FrontMaterial.shininess, 1.0, 128.0); \n"
+#endif
         "        sceneColor += gl_FrontLightProduct[0].specular * pow(HdotN, shine); \n"
         "    } \n"
 

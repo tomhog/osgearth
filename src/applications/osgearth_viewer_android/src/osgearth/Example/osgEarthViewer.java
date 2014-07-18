@@ -28,15 +28,16 @@ public class osgEarthViewer extends Activity implements View.OnKeyListener {
     //Main Android Activity life cycle
     @Override protected void onCreate(Bundle icicle) {
     	
-		Log.w("osgNativeLib", "About to load lib");
+    	//load our native lib
         System.loadLibrary("osgNativeLib");
-        Log.w("osgNativeLib", "Lib loaded");
     	
         super.onCreate(icicle);
+        
+        //set window style
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-        // Create a GLSurfaceView instance and set it as the ContentView for this Activity
+        // Create our GLSurfaceview EGLView which calls our native libs init and frame/update functions  
         mView = new EGLview(this);
         setContentView(mView);
         /*

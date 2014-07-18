@@ -48,10 +48,10 @@ USE_OSGPLUGIN(jpeg)
 USE_OSGPLUGIN(curl)
 USE_OSGPLUGIN(freetype)
 
-//USE_OSGPLUGIN(earth)
 
 USE_OSGPLUGIN(kml)
 USE_OSGPLUGIN(osgearth_sky_simple)
+USE_OSGPLUGIN(osgearth_sky_gl)
 USE_OSGPLUGIN(osgearth_feature_wfs)
 USE_OSGPLUGIN(osgearth_feature_tfs)
 USE_OSGPLUGIN(osgearth_tms)

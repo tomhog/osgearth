@@ -480,11 +480,16 @@ Registry::cloneOrCreateOptions( const osgDB::Options* input ) const
         new osgDB::Options();
 
     // clear the CACHE_ARCHIVES flag because it is evil
+#ifndef ANDROID
     if ( ((int)newOptions->getObjectCacheHint() & osgDB::Options::CACHE_ARCHIVES) != 0 )
     {
         newOptions->setObjectCacheHint( (osgDB::Options::CacheHintOptions)
             ((int)newOptions->getObjectCacheHint() & ~osgDB::Options::CACHE_ARCHIVES) );
     }
+#else
+    newOptions->setObjectCacheHint( (osgDB::Options::CacheHintOptions)
+                                   ((int)newOptions->getObjectCacheHint() | osgDB::Options::CACHE_ARCHIVES) );
+#endif
 
     return newOptions;
 }

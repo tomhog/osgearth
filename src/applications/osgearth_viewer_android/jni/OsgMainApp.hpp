@@ -57,7 +57,7 @@ public:
     void keyboardDown(int key);
     void keyboardUp(int key);
     void clearEventQueue();
-
+    void setDataPath(std::string dataPath, std::string packagePath);
 };
 
 

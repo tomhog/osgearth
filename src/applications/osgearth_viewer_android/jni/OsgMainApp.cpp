@@ -20,20 +20,19 @@ void OsgMainApp::surfaceCreated()
 	//osgEarth::Registry::instance()->setCapabilities(NULL);//new osgEarth::AndroidCapabilities());
 }
 
-void OsgMainApp::initOsgWindow(int x,int y,int width,int height){
-
-    __android_log_write(ANDROID_LOG_ERROR, "OSGANDROID",
-            "Initializing geometry");
+void OsgMainApp::initOsgWindow(int x,int y,int width,int height)
+{
     //
     _scene = new DemoScene();
     _scene->init("", osg::Vec2(width, height), 0);
-
+    _bufferWidth = width;
+    _bufferHeight = height;
     _initialized = true;
 }
 
 //Draw
-void OsgMainApp::draw(){
-
+void OsgMainApp::draw()
+{
     _scene->frame();
     
     //clear events for next frame
@@ -41,9 +40,11 @@ void OsgMainApp::draw(){
     _frameTouchMovedEvents = NULL;
     _frameTouchEndedEvents = NULL;
 }
+
 //Events
 static bool flipy = true;
-void OsgMainApp::touchBeganEvent(int touchid,float x,float y){
+void OsgMainApp::touchBeganEvent(int touchid,float x,float y)
+{
     if (!_frameTouchBeganEvents.valid()) {
         if(_scene->getViewer()){
             _frameTouchBeganEvents = _scene->getViewer()->getEventQueue()->touchBegan(touchid, osgGA::GUIEventAdapter::TOUCH_BEGAN, x, flipy ? _bufferHeight-y : y);
@@ -52,8 +53,11 @@ void OsgMainApp::touchBeganEvent(int touchid,float x,float y){
         _frameTouchBeganEvents->addTouchPoint(touchid, osgGA::GUIEventAdapter::TOUCH_BEGAN, x, flipy ? _bufferHeight-y : y);
     }
 }
-void OsgMainApp::touchMovedEvent(int touchid,float x,float y){
-    if (!_frameTouchMovedEvents.valid()) {
+
+void OsgMainApp::touchMovedEvent(int touchid,float x,float y)
+{
+    if (!_frameTouchMovedEvents.valid())
+    {
         if(_scene->getViewer()){
             _frameTouchMovedEvents = _scene->getViewer()->getEventQueue()->touchMoved(touchid, osgGA::GUIEventAdapter::TOUCH_MOVED, x, flipy ? _bufferHeight-y : y);
         }
@@ -61,8 +65,10 @@ void OsgMainApp::touchMovedEvent(int touchid,float x,float y){
         _frameTouchMovedEvents->addTouchPoint(touchid, osgGA::GUIEventAdapter::TOUCH_MOVED, x, flipy ? _bufferHeight-y : y);
     }
 }
-void OsgMainApp::touchEndedEvent(int touchid,float x,float y,int tapcount){
-    if (!_frameTouchEndedEvents.valid()) {
+void OsgMainApp::touchEndedEvent(int touchid,float x,float y,int tapcount)
+{
+    if (!_frameTouchEndedEvents.valid())
+    {
         if(_scene->getViewer()){
             _frameTouchEndedEvents = _scene->getViewer()->getEventQueue()->touchEnded(touchid, osgGA::GUIEventAdapter::TOUCH_ENDED, x, flipy ? _bufferHeight-y : y,tapcount);
         }
@@ -70,10 +76,13 @@ void OsgMainApp::touchEndedEvent(int touchid,float x,float y,int tapcount){
         _frameTouchEndedEvents->addTouchPoint(touchid, osgGA::GUIEventAdapter::TOUCH_ENDED, x, flipy ? _bufferHeight-y : y,tapcount);
     }
 }
-void OsgMainApp::keyboardDown(int key){
+
+void OsgMainApp::keyboardDown(int key)
+{
     _scene->getViewer()->getEventQueue()->keyPress(key);
 }
-void OsgMainApp::keyboardUp(int key){
+void OsgMainApp::keyboardUp(int key)
+{
     _scene->getViewer()->getEventQueue()->keyRelease(key);
 }
 
@@ -86,4 +95,9 @@ void OsgMainApp::clearEventQueue()
     
     //clear the viewers queue
     _scene->getViewer()->getEventQueue()->clear();
+}
+
+void OsgMainApp::setDataPath(std::string dataPath, std::string packagePath)
+{
+	_scene->setDataPath(dataPath, packagePath);
 }
