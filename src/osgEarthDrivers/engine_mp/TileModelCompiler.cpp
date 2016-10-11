@@ -51,7 +51,7 @@ using namespace osgEarth::Symbology;
 
 #define LC "[TileModelCompiler] "
 
-#define USE_TEXCOORD_CACHE 1
+//#define USE_TEXCOORD_CACHE 1
 
 //------------------------------------------------------------------------
 
