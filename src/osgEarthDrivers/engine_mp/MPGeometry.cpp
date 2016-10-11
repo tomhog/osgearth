@@ -512,6 +512,17 @@ MPGeometry::compileGLObjects( osg::RenderInfo& renderInfo ) const
     osg::Geometry::compileGLObjects(renderInfo);
 }
 
+osg::VertexArrayState*
+MPGeometry::createVertexArrayState(osg::RenderInfo& renderInfo) const
+{
+    osg::VertexArrayState* vas = osg::Geometry::createVertexArrayState(renderInfo);
+    
+    // make sure we have array dispatchers for the multipass coords
+    vas->assignTexCoordArrayDispatcher(_texCoordList.size() + 2);
+    
+    return vas;
+}
+
 void 
 MPGeometry::drawImplementation(osg::RenderInfo& renderInfo) const
 {

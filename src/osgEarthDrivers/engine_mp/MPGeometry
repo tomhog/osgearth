@@ -154,6 +154,9 @@ namespace osgEarth { namespace Drivers { namespace MPTerrainEngine
         osg::BoundingBox computeBound() const;
 #endif
 
+    protected:
+        osg::VertexArrayState* createVertexArrayState(osg::RenderInfo& renderInfo) const;
+
     public:
         META_Object(osgEarth, MPGeometry);
         MPGeometry() : osg::Geometry(), _frame(0L) { }

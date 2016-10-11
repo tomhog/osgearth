@@ -51,7 +51,7 @@ using namespace osgEarth::Symbology;
 
 #define LC "[TileModelCompiler] "
 
-//#define USE_TEXCOORD_CACHE 1
+#define USE_TEXCOORD_CACHE 1
 
 //------------------------------------------------------------------------
 
@@ -418,6 +418,7 @@ namespace
 
 #else // not USE_TEXCOORD_CACHE
         d.renderTileCoords = new osg::Vec2Array();
+        d.renderTileCoords->setVertexBufferObject( new osg::VertexBufferObject() );
         d.renderTileCoords->reserve( d.numVerticesInSurface );
         d.ownsTileCoords = true;
 #endif
@@ -463,6 +464,7 @@ namespace
 
 #else // not USE_TEXCOORD_CACHE
                     r._texCoords = new osg::Vec2Array();
+                    r._texCoords->setVertexBufferObject( new osg::VertexBufferObject() );
                     r._texCoords->reserve( d.numVerticesInSurface );
                     r._ownsTexCoords = true;
 #endif
