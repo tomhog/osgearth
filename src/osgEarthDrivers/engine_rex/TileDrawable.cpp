@@ -528,7 +528,7 @@ TileDrawable::drawVertexArraysImplementation(osg::RenderInfo& renderInfo) const
 
     bool handleVertexAttributes = !_geom->getVertexAttribArrayList().empty();
 
-    ArrayDispatchers& arrayDispatchers = state.getArrayDispatchers();
+    AttributeDispatchers& arrayDispatchers = state.getAttributeDispatchers();// getArrayDispatchers();
 
     arrayDispatchers.reset();
     arrayDispatchers.setUseVertexAttribAlias(state.getUseVertexAttributeAliasing());
@@ -547,7 +547,7 @@ TileDrawable::drawVertexArraysImplementation(osg::RenderInfo& renderInfo) const
     }
 
     // dispatch any attributes that are bound overall
-    arrayDispatchers.dispatch(osg::Array::BIND_OVERALL,0);
+    arrayDispatchers.dispatch(0);//osg::Array::BIND_OVERALL,0);
 
     state.lazyDisablingOfVertexAttributes();
 
