@@ -75,6 +75,7 @@ SET(LIB_PUBLIC_HEADERS
     DateTime
     DateTimeRange
     DepthOffset
+    DPLineSegmentIntersector
     DrapeableNode
     DrapingCullSet
     DrapingTechnique
@@ -255,6 +256,7 @@ set(TARGET_SRC
     DateTime.cpp
     DateTimeRange.cpp
     DepthOffset.cpp
+    DPLineSegmentIntersector.cpp
     DrapeableNode.cpp
     DrapingCullSet.cpp
     DrapingTechnique.cpp
