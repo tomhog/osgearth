@@ -108,11 +108,16 @@ ImageMosaic::createImage()
 
     unsigned int pixelsWide = tilesWide * tileWidth;
     unsigned int pixelsHigh = tilesHigh * tileHeight;
+	unsigned int tileDepth = tile->_image->r();
 
 // Add Materials processing support or lightmap ...
 	int rcount = tile->_image->r();
     osg::ref_ptr<osg::Image> image = new osg::Image;
+<<<<<<< HEAD
     image->allocateImage(pixelsWide, pixelsHigh, rcount, tile->_image->getPixelFormat(), tile->_image->getDataType());
+=======
+    image->allocateImage(pixelsWide, pixelsHigh, tileDepth, tile->_image->getPixelFormat(), tile->_image->getDataType());
+>>>>>>> master
     image->setInternalTextureFormat(tile->_image->getInternalTextureFormat());
     ImageUtils::markAsNormalized(image.get(), ImageUtils::isNormalized(tile->getImage()));
 

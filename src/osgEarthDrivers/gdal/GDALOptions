@@ -101,8 +101,7 @@ namespace osgEarth { namespace Drivers
         
         /**
          * Interpolation method to use when resampling source data; options are
-         * nearest, average, and bilinear.  Only effects elevation data
-         * unless interp_imagery is also set to true.
+         * nearest, average, and bilinear.
          */
         optional<ElevationInterpolation>& interpolation() { return _interpolation; }
         const optional<ElevationInterpolation>& interpolation() const { return _interpolation; }
@@ -122,6 +121,7 @@ namespace osgEarth { namespace Drivers
         const optional<unsigned int>& subDataSet() const { return _subDataSet;}
 
         /**
+<<<<<<< HEAD
          * Set to true to also sample imagery using the method specified by "interpolation"
          * By default imagery is sampled using nearest sampling.  This takes advantage of
          * any built in overviews or wavelet compression in the source file but can 
@@ -140,6 +140,8 @@ namespace osgEarth { namespace Drivers
 		 const optional<bool>& nearIR() const { return _nearIR; }
 
         /**
+=======
+>>>>>>> master
          The "warp profile" is a way to tell the GDAL driver to keep the original SRS and geotransform of the source data
          but use a Warped VRT to make the data appear to conform to the given profile.  This is useful for merging multiple 
          files that may be in different projections using the composite driver.
@@ -160,9 +162,13 @@ namespace osgEarth { namespace Drivers
 
         GDALOptions( const TileSourceOptions& options =TileSourceOptions() ) :
             TileSourceOptions( options ),
+<<<<<<< HEAD
             _interpolation( INTERP_AVERAGE ),
             _interpolateImagery( false ),
 	    _nearIR(false)
+=======
+            _interpolation(INTERP_AVERAGE)
+>>>>>>> master
         {
             setDriver( "gdal" );
             fromConfig( _conf );
@@ -175,27 +181,40 @@ namespace osgEarth { namespace Drivers
         Config getConfig() const
         {
             Config conf = TileSourceOptions::getConfig();
+<<<<<<< HEAD
             conf.updateIfSet( "url", _url );
 			conf.updateIfSet("table", _table);
             conf.updateIfSet( "connection", _connection );
             conf.updateIfSet( "extensions", _extensions );
             conf.updateIfSet( "black_extensions", _blackExtensions );
+=======
+            conf.set( "url", _url );
+            conf.set( "connection", _connection );
+            conf.set( "extensions", _extensions );
+            conf.set( "black_extensions", _blackExtensions );
+>>>>>>> master
 
             if ( _interpolation.isSet() ) {
                 if ( _interpolation.value() == osgEarth::INTERP_NEAREST ) conf.update( "interpolation", "nearest" );
                 else if ( _interpolation.value() == osgEarth::INTERP_AVERAGE ) conf.update( "interpolation", "average" );
                 else if ( _interpolation.value() == osgEarth::INTERP_BILINEAR ) conf.update( "interpolation", "bilinear" );
+                else if (_interpolation.value() == osgEarth::INTERP_CUBIC) conf.update("interpolation", "cubic");
+                else if (_interpolation.value() == osgEarth::INTERP_CUBICSPLINE) conf.update("interpolation", "cubicspline");
             }
 
-            conf.updateIfSet( "max_data_level_override", _maxDataLevelOverride);
-            conf.updateIfSet( "subdataset", _subDataSet);
+            conf.set( "max_data_level_override", _maxDataLevelOverride);
+            conf.set( "subdataset", _subDataSet);            
 
+<<<<<<< HEAD
             conf.updateIfSet( "interp_imagery", _interpolateImagery);
 			conf.updateIfSet("nearir", _nearIR);
 
             conf.updateObjIfSet( "warp_profile", _warpProfile );
 			conf.updateIfSet("root_dir", _CDB_rootDir);
 			conf.updateIfSet("limits", _CDB_Limits);
+=======
+            conf.setObj( "warp_profile", _warpProfile );
+>>>>>>> master
 
             conf.updateNonSerializable( "GDALOptions::ExternalDataset", _externalDataset.get() );
 
@@ -217,12 +236,17 @@ namespace osgEarth { namespace Drivers
             if ( in == "nearest" ) _interpolation = osgEarth::INTERP_NEAREST;
             else if ( in == "average" ) _interpolation = osgEarth::INTERP_AVERAGE;
             else if ( in == "bilinear" ) _interpolation = osgEarth::INTERP_BILINEAR;
+            else if (in == "cubic") _interpolation = osgEarth::INTERP_CUBIC;
+            else if (in == "cubicspline") _interpolation = osgEarth::INTERP_CUBICSPLINE;
             conf.getIfSet( "max_data_level_override", _maxDataLevelOverride);
             conf.getIfSet( "subdataset", _subDataSet);
+<<<<<<< HEAD
             conf.getIfSet("interp_imagery", _interpolateImagery);
 			conf.getIfSet("nearir", _nearIR);
 			conf.getIfSet("root_dir", _CDB_rootDir);
 			conf.getIfSet("limits", _CDB_Limits);
+=======
+>>>>>>> master
 
             conf.getObjIfSet( "warp_profile", _warpProfile );
 
@@ -237,7 +261,6 @@ namespace osgEarth { namespace Drivers
         optional<std::string>            _extensions;
         optional<std::string>            _blackExtensions;
         optional<ElevationInterpolation> _interpolation;
-        optional<bool>                   _interpolateImagery;
         optional<unsigned int>           _maxDataLevelOverride;
         optional<unsigned int>           _subDataSet;
         optional<ProfileOptions>         _warpProfile;

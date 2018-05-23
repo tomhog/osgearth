@@ -17,8 +17,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include <osgEarthFeatures/Feature>
-#include <osgEarthFeatures/Session>
+#include <osgEarthFeatures/FilterContext>
 #include <osgEarthFeatures/GeometryUtils>
+#include <osgEarthFeatures/ScriptEngine>
+
 #include <osgEarth/StringUtils>
 #include <osgEarth/JsonUtils>
 #include <algorithm>
@@ -93,6 +95,11 @@ FeatureProfile::setProfile( const osgEarth::Profile* profile )
 std::string
 AttributeValue::getString() const
 {
+    if (!second.set)
+    {
+        return "";
+    }
+
     switch( first ) {
         case ATTRTYPE_STRING: return second.stringValue;
         case ATTRTYPE_DOUBLE: return osgEarth::toString(second.doubleValue);
@@ -106,6 +113,11 @@ AttributeValue::getString() const
 double
 AttributeValue::getDouble( double defaultValue ) const 
 {
+    if (!second.set)
+    {
+        return defaultValue;
+    }
+
     switch( first ) {
         case ATTRTYPE_STRING: return osgEarth::as<double>(second.stringValue, defaultValue);
         case ATTRTYPE_DOUBLE: return second.doubleValue;
@@ -119,6 +131,11 @@ AttributeValue::getDouble( double defaultValue ) const
 int
 AttributeValue::getInt( int defaultValue ) const 
 {
+    if (!second.set)
+    {
+        return defaultValue;
+    }
+
     switch( first ) {
         case ATTRTYPE_STRING: return osgEarth::as<int>(second.stringValue, defaultValue);
         case ATTRTYPE_DOUBLE: return (int)second.doubleValue;
@@ -132,6 +149,11 @@ AttributeValue::getInt( int defaultValue ) const
 bool
 AttributeValue::getBool( bool defaultValue ) const 
 {
+    if (!second.set)
+    {
+        return defaultValue;
+    }
+
     switch( first ) {
         case ATTRTYPE_STRING: return osgEarth::as<bool>(second.stringValue, defaultValue);
         case ATTRTYPE_DOUBLE: return second.doubleValue != 0.0;
@@ -176,6 +198,11 @@ _srs      ( rhs._srs.get() )
     dirty();
 }
 
+Feature::~Feature()
+{
+    //nop
+}
+
 FeatureID
 Feature::getFID() const 
 {
@@ -186,6 +213,16 @@ void
 Feature::setFID(FeatureID fid)
 {
     _fid = fid;
+}
+
+GeoExtent
+Feature::getExtent() const
+{
+    if (!getSRS() || !getGeometry())
+    {
+        return GeoExtent::INVALID;
+    }
+    return GeoExtent(getSRS(), getGeometry()->getBounds());
 }
 
 void
@@ -402,7 +439,11 @@ Feature::eval( StringExpression& expr, FilterContext const* context ) const
           if (result.success())
             val = result.asString();
           else
-            OE_WARN << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+          {
+            // Couldn't execute it as code, just take it as a string literal.
+            val = i->first;
+            OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+          }
         }
       }
 
@@ -434,7 +475,11 @@ Feature::eval(StringExpression& expr, Session* session) const
                 if (result.success())
                     val = result.asString();
                 else
-                    OE_WARN << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+                {
+                    // Couldn't execute it as code, just take it as a string literal.
+                    val = i->first;
+                    OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+                }
             }
         }
 
@@ -495,6 +540,7 @@ bool Feature::getWorldBoundingPolytope( const osg::BoundingSphered& bs, const Sp
 {
     if ( bs.valid() )
     {
+        out_polytope.getMaskStack().clear();
         out_polytope.clear();
 
         // add planes for the four sides of the BS. Normals point inwards.
@@ -533,6 +579,18 @@ bool Feature::getWorldBoundingPolytope( const osg::BoundingSphered& bs, const Sp
     return false;
 }
 
+GeoExtent
+Feature::calculateExtent() const
+{    
+    GeoExtent e(getSRS());
+    ConstGeometryIterator gi(getGeometry(), false);
+    while (gi.hasMore()) {
+        const Geometry* part = gi.next();
+        for (Geometry::const_iterator v = part->begin(); v != part->end(); ++v)
+            e.expandToInclude(*v);
+    }
+    return e;
+}
 
 std::string
 Feature::getGeoJSON() const
@@ -608,16 +666,16 @@ Feature::getGeoJSON() const
     return Json::FastWriter().write( root );
 }
 
-std::string Feature::featuresToGeoJSON( FeatureList& features)
+std::string Feature::featuresToGeoJSON( const FeatureList& features)
 {
     std::stringstream buf;
 
     buf << "{\"type\": \"FeatureCollection\", \"features\": [";
 
-    FeatureList::iterator last = features.end();
+    FeatureList::const_iterator last = features.end();
     last--;
 
-    for (FeatureList::iterator i = features.begin(); i != features.end(); i++)
+    for (FeatureList::const_iterator i = features.begin(); i != features.end(); i++)
     {
         buf << i->get()->getGeoJSON();
         if (i != last)
@@ -649,4 +707,48 @@ void Feature::transform( const SpatialReference* srs )
         getSRS()->transform( geom->asVector(), srs );
     }
     setSRS( srs );
+}
+
+void Feature::splitAcrossDateLine(FeatureList& splitFeatures)
+{
+    splitFeatures.clear();
+    
+     // If the feature is geodetic, try to split it across the dateline.
+    if (getSRS() && getSRS()->isGeodetic())
+    {
+        GeoExtent extent(getSRS(), getGeometry()->getBounds());
+        // Only split the feature if it crosses the antimerdian
+        if (extent.crossesAntimeridian())
+        {
+            // This tries to split features across the dateline in three different zones.  -540 to -180, -180 to 180, and 180 to 540.
+            double minLon = -540;
+            for (int i = 0; i < 3; i++)
+            {
+                double offset = minLon - -180.0;
+                double maxLon = minLon + 360.0;
+                Bounds bounds(minLon, -90.0, maxLon, 90.0);
+                osg::ref_ptr< Geometry > croppedGeometry;
+                if (getGeometry()->crop(bounds, croppedGeometry))
+                {
+                    // If the geometry was cropped, offset the x coordinate so it's within normal longitude ranges.
+                    for (int j = 0; j < croppedGeometry->size(); j++)
+                    {
+                        (*croppedGeometry)[j].x() -= offset;
+                    }
+                    osg::ref_ptr< Feature > croppedFeature = new Feature(*this);
+                    // Make sure the feature is wound correctly.
+                    croppedGeometry->rewind(osgEarth::Symbology::Geometry::ORIENTATION_CCW);
+                    croppedFeature->setGeometry(croppedGeometry.get());
+                    splitFeatures.push_back(croppedFeature);
+                }
+                minLon += 360.0;
+            }
+        }
+    }
+
+    // If we didn't actually split the feature then just add the original
+    if (splitFeatures.empty())
+    {
+        splitFeatures.push_back( this );
+    }   
 }

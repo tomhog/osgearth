@@ -19,6 +19,7 @@
 #include "FeatureCursorOGR"
 #include <osgEarthFeatures/OgrUtils>
 #include <osgEarthFeatures/Feature>
+#include <osgEarthFeatures/FilterContext>
 #include <osgEarth/Registry>
 #include <osg/Math>
 #include <algorithm>
@@ -74,7 +75,7 @@ FeatureCursorOGR::FeatureCursorOGR(OGRDataSourceH              dsHandle,
                                    const FeatureSource*        source,
                                    const FeatureProfile*       profile,
                                    const Symbology::Query&     query,
-                                   const FeatureFilterList&    filters) :
+                                   const FeatureFilterChain*   filters) :
 _source           ( source ),
 _dsHandle         ( dsHandle ),
 _layerHandle      ( layerHandle ),
@@ -243,11 +244,27 @@ FeatureCursorOGR::readChunk()
             {
                 osg::ref_ptr<Feature> feature = OgrUtils::createFeature( handle, _profile.get() );
 
-                if (feature.valid() &&
-                    !_source->isBlacklisted( feature->getFID() ) &&
-                    validateGeometry( feature->getGeometry() ))
+                if (feature.valid())
                 {
-                    filterList.push_back( feature.release() );
+                    if (!_source->isBlacklisted(feature->getFID()))
+                    {
+                        if (validateGeometry( feature->getGeometry() ))
+                        {
+                            filterList.push_back( feature.release() );
+                        }
+                        else
+                        {
+                            OE_DEBUG << LC << "Invalid geometry found at feature " << feature->getFID() << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        OE_DEBUG << LC << "Blacklisted feature " << feature->getFID() << " skipped" << std::endl;
+                    }
+                }
+                else
+                {
+                    OE_DEBUG << LC << "Skipping NULL feature" << std::endl;
                 }
                 OGR_F_Destroy( handle );
             }
@@ -258,7 +275,7 @@ FeatureCursorOGR::readChunk()
         }
 
         // preprocess the features using the filter list:
-        if ( !_filters.empty() )
+        if ( _filters.valid() && !_filters->empty() )
         {
             FilterContext cx;
             cx.setProfile( _profile.get() );
@@ -271,7 +288,7 @@ FeatureCursorOGR::readChunk()
                 cx.extent() = _profile->getExtent();
             }
 
-            for( FeatureFilterList::const_iterator i = _filters.begin(); i != _filters.end(); ++i )
+            for( FeatureFilterChain::const_iterator i = _filters->begin(); i != _filters->end(); ++i )
             {
                 FeatureFilter* filter = i->get();
                 cx = filter->push( filterList, cx );

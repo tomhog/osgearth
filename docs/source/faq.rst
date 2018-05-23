@@ -143,7 +143,7 @@ What is the best practice for using GitHub?
 	
 	1. Create your own GitHub account and log in.
 	2. Clone the osgEarth repo.
-	3. Work from your clone. Sync it to the main repository peridocially to get the
+	3. Work from your clone. Sync it to the main repository periodically to get the
 	   latest changes.
 
 
@@ -176,7 +176,11 @@ Can I hire someone to help me with osgEarth?
     services. The easiest way to get in touch with us is through our web site
     `contact form`_.
     
-.. _contact form:   http://pelicanmapping.com/?page_id=2
+    Pelican also offers a `Priority Support`_ package that is a good fit for 
+    companies that prefer to do most of their development in-house.
+    
+.. _contact form:     http://pelicanmapping.com/?page_id=2
+.. _Priority Support: http://web.pelicanmapping.com/priority-support/
 
 
 ----

@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include <osgEarth/Capabilities>
+#include <osgEarth/Version>
 #include <osg/FragmentProgram>
 #include <osg/GraphicsContext>
 #include <osg/GL>
@@ -55,6 +56,8 @@ struct MyGraphicsContext
         traits->doubleBuffer = false;
         traits->sharedContext = 0;
         traits->pbuffer = false;
+        traits->glContextVersion = osg::DisplaySettings::instance()->getGLContextVersion();
+        traits->glContextProfileMask = osg::DisplaySettings::instance()->getGLContextProfileMask();
 
         // Intel graphics adapters dont' support pbuffers, and some of their drivers crash when
         // you try to create them. So by default we will only use the unmapped/pbuffer method
@@ -137,7 +140,8 @@ _supportsARBTC          ( false ),
 _supportsETC            ( false ),
 _supportsRGTC           ( false ),
 _supportsTextureBuffer  ( false ),
-_maxTextureBufferSize   ( 0 )
+_maxTextureBufferSize   ( 0 ),
+_isCoreProfile          ( true )
 {
     // little hack to force the osgViewer library to link so we can create a graphics context
     osgViewerGetVersion();
@@ -151,7 +155,7 @@ _maxTextureBufferSize   ( 0 )
     _numProcessors = OpenThreads::GetNumberOfProcessors();
 
     // GLES compile?
-#if (defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE))
+#if (defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE))
     _isGLES = true;
 #else
     _isGLES = false;
@@ -165,6 +169,8 @@ _maxTextureBufferSize   ( 0 )
         osg::GraphicsContext* gc = mgc._gc.get();
         unsigned int id = gc->getState()->getContextID();
         const osg::GL2Extensions* GL2 = osg::GL2Extensions::Get( id, true );
+
+        OE_INFO << LC << "osgEarth Version: " << osgEarthGetVersion() << std::endl;
         
         if ( ::getenv("OSGEARTH_NO_GLSL") )
         {
@@ -173,11 +179,7 @@ _maxTextureBufferSize   ( 0 )
         }
         else
         {
-#if OSG_MIN_VERSION_REQUIRED(3,3,3)
             _supportsGLSL = GL2->isGlslSupported;
-#else
-			_supportsGLSL = GL2->isGlslSupported();
-#endif
         }
 
         OE_INFO << LC << "Detected hardware capabilities:" << std::endl;
@@ -191,24 +193,35 @@ _maxTextureBufferSize   ( 0 )
         _version = std::string( reinterpret_cast<const char*>(glGetString(GL_VERSION)) );
         OE_INFO << LC << "  Version = " << _version << std::endl;
 
+        // Core profile requires OSG 3.2, and the compatibility extension not being present
+        _isCoreProfile = (GL2->glVersion >= 3.2f && !osg::isGLExtensionSupported(id, "GL_ARB_compatibility"));
+        OE_INFO << LC << "  Core Profile = " << SAYBOOL(_isCoreProfile) << std::endl;
+
+#if !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
         glGetIntegerv( GL_MAX_TEXTURE_UNITS, &_maxFFPTextureUnits );
         //OE_INFO << LC << "  Max FFP texture units = " << _maxFFPTextureUnits << std::endl;
+#endif
 
         glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS_ARB, &_maxGPUTextureUnits );
         OE_INFO << LC << "  Max GPU texture units = " << _maxGPUTextureUnits << std::endl;
 
+#if !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
         glGetIntegerv( GL_MAX_TEXTURE_COORDS_ARB, &_maxGPUTextureCoordSets );
+#else
+        _maxGPUTextureCoordSets = _maxGPUTextureUnits;
+#endif
         OE_INFO << LC << "  Max GPU texture coord indices = " << _maxGPUTextureCoordSets << std::endl;
 
         glGetIntegerv( GL_MAX_VERTEX_ATTRIBS, &_maxGPUAttribs );
         OE_INFO << LC << "  Max GPU attributes = " << _maxGPUAttribs << std::endl;
 
+#if !(defined(OSG_GL3_AVAILABLE))
         glGetIntegerv( GL_DEPTH_BITS, &_depthBits );
         OE_INFO << LC << "  Depth buffer bits = " << _depthBits << std::endl;
-
+#endif
         
         glGetIntegerv( GL_MAX_TEXTURE_SIZE, &_maxTextureSize );
-#if !(defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE))
+#if !defined(OSG_GLES1_AVAILABLE) && !defined(OSG_GLES2_AVAILABLE) && !defined(OSG_GLES3_AVAILABLE)
         // Use the texture-proxy method to determine the maximum texture size 
         for( int s = _maxTextureSize; s > 2; s >>= 1 )
         {
@@ -224,7 +237,6 @@ _maxTextureBufferSize   ( 0 )
 #endif
         OE_INFO << LC << "  Max texture size = " << _maxTextureSize << std::endl;
 
-        //PORT@tom, what effect will this have?
 #ifdef OSG_GL_FIXED_FUNCTION_AVAILABLE
         glGetIntegerv( GL_MAX_LIGHTS, &_maxLights );
 #else
@@ -236,11 +248,7 @@ _maxTextureBufferSize   ( 0 )
 
         if ( _supportsGLSL )
         {
-#if OSG_MIN_VERSION_REQUIRED(3,3,3)
 			_GLSLversion = GL2->glslLanguageVersion;
-#else
-            _GLSLversion = GL2->getLanguageVersion();
-#endif
             OE_INFO << LC << "  GLSL Version = " << getGLSLVersionInt() << std::endl;
         }
 
@@ -291,13 +299,22 @@ _maxTextureBufferSize   ( 0 )
             _supportsUniformBufferObjects = false;
         }
 
+#if !defined(OSG_GLES3_AVAILABLE)
         _supportsNonPowerOfTwoTextures =
             osg::isGLExtensionSupported( id, "GL_ARB_texture_non_power_of_two" );
+#else
+        _supportsNonPowerOfTwoTextures = true;
+#endif
         OE_INFO << LC << "  NPOT textures = " << SAYBOOL(_supportsNonPowerOfTwoTextures) << std::endl;
 
+
+#if !defined(OSG_GLES3_AVAILABLE)
         _supportsTextureBuffer = 
             osg::isGLExtensionOrVersionSupported( id, "GL_ARB_texture_buffer_object", 3.0 ) ||
             osg::isGLExtensionOrVersionSupported( id, "GL_EXT_texture_buffer_object", 3.0 );
+#else
+        _supportsTextureBuffer = false;
+#endif
 
         if ( _supportsTextureBuffer )
         {
@@ -315,15 +332,12 @@ _maxTextureBufferSize   ( 0 )
         OE_INFO << LC << "  Transform feedback = " << SAYBOOL(supportsTransformFeedback) << "\n";
 
 
-        // Writing to gl_FragDepth is not supported under GLES:
+        // Writing to gl_FragDepth is not supported under GLES, is supported under gles3
 #if (defined(OSG_GLES1_AVAILABLE) || defined(OSG_GLES2_AVAILABLE))
         _supportsFragDepthWrite = false;
 #else
         _supportsFragDepthWrite = true;
 #endif
-
-        //_supportsTexture2DLod = osg::isGLExtensionSupported( id, "GL_ARB_shader_texture_lod" );
-        //OE_INFO << LC << "  texture2DLod = " << SAYBOOL(_supportsTexture2DLod) << std::endl;
 
         // NVIDIA:
         bool isNVIDIA = _vendor.find("NVIDIA") == 0;

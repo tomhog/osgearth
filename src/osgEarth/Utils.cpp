@@ -39,6 +39,8 @@ void osgEarth::removeEventHandler(osgViewer::View* view, osgGA::GUIEventHandler*
 
 //------------------------------------------------------------------------
 
+#ifdef OE_HAVE_PIXEL_AUTO_TRANSFORM
+
 #undef LC
 #define LC "[PixelAutoTransform] "
 
@@ -62,6 +64,8 @@ PixelAutoTransform::accept( osg::NodeVisitor& nv )
     if ( !nv.validNodeMask(*this) )
         return;
 
+    bool resetLodScale = false;
+    double oldLodScale = 1.0;
     if ( nv.getVisitorType() == osg::NodeVisitor::CULL_VISITOR )
     {
         // re-activate culling now that the first cull traversal has taken place.
@@ -293,13 +297,27 @@ PixelAutoTransform::accept( osg::NodeVisitor& nv )
             _dirty = false;
 
             // update the LOD Scale based on the auto-scale.
-            cv->setLODScale( 1.0/getScale().x() );
+            const double xScale = getScale().x();
+            if (xScale != 1.0 && xScale != 0.0)
+            {
+                oldLodScale = cv->getLODScale();
+                resetLodScale = true;
+                cv->setLODScale( 1.0/xScale );
+            }
 
         } // if (cv)
     } // if is cull visitor
 
     // finally, skip AT's accept and do Transform.
     Transform::accept(nv);
+
+    // Reset the LOD scale if we changed it
+    if (resetLodScale)
+    {
+        osgUtil::CullVisitor* cv = dynamic_cast<osgUtil::CullVisitor*>(&nv);
+        if ( cv )
+            cv->setLODScale( oldLodScale );
+    }
 }
 
 void
@@ -308,6 +326,8 @@ PixelAutoTransform::dirty()
     _dirty = true;
     setCullingActive( false );
 }
+
+#endif // OE_HAVE_PIXEL_AUTO_TRANSFORM
 
 //-----------------------------------------------------------------------------
 
@@ -321,38 +341,35 @@ osg::NodeVisitor( TRAVERSE_ALL_CHILDREN )
 }
 
 void
-VertexCacheOptimizer::apply(osg::Geode& geode)
+VertexCacheOptimizer::apply(osg::Drawable& drawable)
 {
-    if (geode.getDataVariance() == osg::Object::DYNAMIC)
+    if (drawable.getDataVariance() == osg::Object::DYNAMIC)
         return;
 
-    for(unsigned i=0; i<geode.getNumDrawables(); ++i )
+    osg::Geometry* geom = drawable.asGeometry();
+
+    if ( geom )
     {
-        osg::Geometry* geom = geode.getDrawable(i)->asGeometry();
+        if ( geom->getDataVariance() == osg::Object::DYNAMIC )
+            return;
 
-        if ( geom )
+        // vertex cache optimizations currently only support surface geometries.
+        // all or nothing in the geode.
+        osg::Geometry::PrimitiveSetList& psets = geom->getPrimitiveSetList();
+        for( osg::Geometry::PrimitiveSetList::iterator i = psets.begin(); i != psets.end(); ++i )
         {
-            if ( geom->getDataVariance() == osg::Object::DYNAMIC )
-                return;
-
-            // vertex cache optimizations currently only support surface geometries.
-            // all or nothing in the geode.
-            osg::Geometry::PrimitiveSetList& psets = geom->getPrimitiveSetList();
-            for( osg::Geometry::PrimitiveSetList::iterator i = psets.begin(); i != psets.end(); ++i )
+            switch( (*i)->getMode() )
             {
-                switch( (*i)->getMode() )
-                {
-                case GL_TRIANGLES:
-                case GL_TRIANGLE_FAN:
-                case GL_TRIANGLE_STRIP:
-                case GL_QUADS:
-                case GL_QUAD_STRIP:
-                case GL_POLYGON:
-                    break;
+            case GL_TRIANGLES:
+            case GL_TRIANGLE_FAN:
+            case GL_TRIANGLE_STRIP:
+            case GL_QUADS:
+            case GL_QUAD_STRIP:
+            case GL_POLYGON:
+                break;
 
-                default:
-                    return;
-                }
+            default:
+                return;
             }
         }
     }
@@ -361,14 +378,14 @@ VertexCacheOptimizer::apply(osg::Geode& geode)
 
     // passed the test; run the optimizer.
     osgUtil::VertexCacheVisitor vcv;
-    geode.accept( vcv );
+    drawable.accept( vcv );
     vcv.optimizeVertices();
 
     osgUtil::VertexAccessOrderVisitor vaov;
-    geode.accept( vaov );
+    drawable.accept( vaov );
     vaov.optimizeOrder();
 
-    traverse( geode );
+    traverse( drawable );
 }
 
 //-----------------------------------------------------------------------------
@@ -384,16 +401,10 @@ _value( value )
 }
 
 void
-SetDataVarianceVisitor::apply(osg::Geode& geode)
+SetDataVarianceVisitor::apply(osg::Drawable& drawable)
 {
-    for(unsigned i=0; i<geode.getNumDrawables(); ++i)
-    {
-        osg::Drawable* d = geode.getDrawable(i);
-        if ( d )
-            d->setDataVariance( _value );
-    }
-
-    traverse(geode);
+    drawable.setDataVariance(_value);
+    traverse(drawable);
 }
 
 //-----------------------------------------------------------------------------
@@ -446,12 +457,11 @@ GeometryValidator::apply(osg::Geometry& geom)
         return;
     }
 
-#if OSG_VERSION_GREATER_OR_EQUAL(3,1,9)
-
     std::set<osg::BufferObject*> _vbos;
 
     osg::Geometry::ArrayList arrays;
     geom.getArrayList(arrays);
+
     for(unsigned i=0; i<arrays.size(); ++i)
     {
         osg::Array* a = arrays[i].get();
@@ -479,34 +489,6 @@ GeometryValidator::apply(osg::Geometry& geom)
     {
         OE_NOTICE << LC << "Found a Geometry that uses more than one VBO (non-optimal sharing)\n";
     }
-
-#else // pre-3.1.9 ... phase out.
-
-    if ( geom.getColorArray() )
-    {
-        if ( geom.getColorBinding() == osg::Geometry::BIND_OVERALL && geom.getColorArray()->getNumElements() != 1 )
-        {
-            OE_NOTICE << "Color: BIND_OVERALL with wrong number of elements" << std::endl;
-        }
-        else if ( geom.getColorBinding() == osg::Geometry::BIND_PER_VERTEX && geom.getColorArray()->getNumElements() != numVerts )
-        {
-            OE_NOTICE << "Color: BIND_PER_VERTEX with colors.size != verts.size" << std::endl;
-        }
-    }
-
-    if ( geom.getNormalArray() )
-    {
-        if ( geom.getNormalBinding() == osg::Geometry::BIND_OVERALL && geom.getNormalArray()->getNumElements() != 1 )
-        {
-            OE_NOTICE << "Normal: BIND_OVERALL with wrong number of elements" << std::endl;
-        }
-        else if ( geom.getNormalBinding() == osg::Geometry::BIND_PER_VERTEX && geom.getNormalArray()->getNumElements() != numVerts )
-        {
-            OE_NOTICE << "Normal: BIND_PER_VERTEX with normals.size != verts.size" << std::endl;
-        }
-    }
-
-#endif
 
     const osg::Geometry::PrimitiveSetList& plist = geom.getPrimitiveSetList();
     
@@ -581,19 +563,18 @@ GeometryValidator::apply(osg::Geometry& geom)
 }
 
 void
-GeometryValidator::apply(osg::Geode& geode)
+GeometryValidator::apply(osg::Group& group)
 {
-    for(unsigned i=0; i<geode.getNumDrawables(); ++i)
+    for(unsigned i=0; i<group.getNumChildren(); ++i)
     {
-        osg::Geometry* geom = geode.getDrawable(i)->asGeometry();
+        osg::Geometry* geom = group.getChild(i)->asGeometry();
         if ( geom )
         {
             apply( *geom );
-
             if ( geom->getVertexArray() == 0L )
             {
                 OE_NOTICE << "removing " << geom->getName() << " b/c of null vertex array\n";
-                geode.removeDrawable( geom );
+                group.removeChild(geom);
                 --i;
             }
         }
@@ -609,20 +590,17 @@ AllocateAndMergeBufferObjectsVisitor::AllocateAndMergeBufferObjectsVisitor()
 }
 
 void
-AllocateAndMergeBufferObjectsVisitor::apply(osg::Geode& geode)
+AllocateAndMergeBufferObjectsVisitor::apply(osg::Drawable& drawable)
 {
-    for(unsigned i=0; i<geode.getNumDrawables(); ++i)
+    osg::Geometry* geom = drawable.asGeometry();
+    if ( geom )
     {
-        osg::Geometry* geom = geode.getDrawable(i)->asGeometry();
-        if ( geom )
-        {
-            // We disable vbo's and then re-enable them to enable sharing of all the arrays.
-            geom->setUseDisplayList( false );
-            geom->setUseVertexBufferObjects( false );
-            geom->setUseVertexBufferObjects( true );
-        }
+        // We disable vbo's and then re-enable them to enable sharing of all the arrays.
+        geom->setUseDisplayList( false );
+        geom->setUseVertexBufferObjects( false );
+        geom->setUseVertexBufferObjects( true );
     }
-    traverse(geode);
+    traverse(drawable);
 }
 
 

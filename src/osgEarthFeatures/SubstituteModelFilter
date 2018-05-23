@@ -28,6 +28,12 @@
 #include <osgEarth/Containers>
 #include <osgEarthFeatures\GlobalModelManager>
 
+namespace osgEarth {
+    namespace Symbology {
+        class ResourceLibrary;
+    }
+}
+
 namespace osgEarth { namespace Features
 {
     using namespace osgEarth;

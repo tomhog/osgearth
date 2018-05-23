@@ -21,7 +21,6 @@
 #define OSGEARTHFEATURES_EXTRUDE_GEOMETRY_FILTER_H 1
 
 #include <osgEarthFeatures/Common>
-#include <osgEarthFeatures/Feature>
 #include <osgEarthFeatures/Filter>
 #include <osgEarthSymbology/Expression>
 #include <osgEarthSymbology/Style>
@@ -29,12 +28,19 @@
 #include <vector>
 #include <list>
 
+namespace osgEarth {
+    namespace Symbology {
+        class ResourceLibrary;
+    }
+}
+
 namespace osgEarth { namespace Features 
 {
     using namespace osgEarth;
     using namespace osgEarth::Symbology;
     
     class FeatureSourceIndex;
+<<<<<<< HEAD
 
 	class ExtrudeGeomGDALHelper
 	{
@@ -64,6 +70,9 @@ namespace osgEarth { namespace Features
 		void		Open_Image();
 		osg::Texture * CreateTexture(osg::Image *image);
 	};
+=======
+    class FeatureIndexBuilder;
+>>>>>>> master
 
     /**
      * Extrudes footprint geometry into 3D geometry
@@ -177,6 +186,7 @@ namespace osgEarth { namespace Features
         // their texture usage
         typedef std::map<osg::StateSet*, osg::ref_ptr<osg::Geode> > SortedGeodeMap;
         SortedGeodeMap                 _geodes;
+        SortedGeodeMap                 _lineGroups;
         osg::ref_ptr<osg::StateSet>    _noTextureStateSet;
 
         bool                           _mergeGeometry;
@@ -240,10 +250,7 @@ namespace osgEarth { namespace Features
 							   const bool			have_roof_image,
 							   const bool			have_roof_mat_index);
 
-        bool buildOutlineGeometry(const Structure&  structure,
-                                  osg::Geometry*    outline,
-                                  const osg::Vec4&  outlineColor,
-                                  float             minCreaseAngleDeg);
+        osg::Drawable* buildOutlineGeometry(const Structure& structure);
     };
 
 } } // namespace osgEarth::Features

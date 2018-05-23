@@ -21,7 +21,8 @@
 */
 #include <osgEarthUtil/RadialLineOfSight>
 #include <osgEarth/TerrainEngineNode>
-#include <osgEarth/DPLineSegmentIntersector>
+#include <osgEarth/GLUtils>
+#include <osgUtil/LineSegmentIntersector>
 #include <osgSim/LineOfSight>
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
@@ -67,9 +68,9 @@ namespace
         {
         }
 
-        virtual void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* terrain, TerrainCallbackContext& )
+        virtual void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* graph, TerrainCallbackContext& )
         {
-            _los->terrainChanged( tileKey, terrain );
+            _los->terrainChanged( tileKey, graph );
         }
 
     private:
@@ -269,11 +270,10 @@ RadialLineOfSightNode::compute_line(osg::Node* node)
     verts->reserve(_numSpokes * 5);
     geometry->setVertexArray( verts );
 
-    osg::Vec4Array* colors = new osg::Vec4Array();
+    osg::Vec4Array* colors = new osg::Vec4Array(osg::Array::BIND_PER_VERTEX);
     colors->reserve( _numSpokes * 5 );
 
     geometry->setColorArray( colors );
-    geometry->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
 
     osg::Vec3d previousEnd;
     osg::Vec3d firstEnd;
@@ -286,7 +286,7 @@ RadialLineOfSightNode::compute_line(osg::Node* node)
         osg::Quat quat(angle, up );
         osg::Vec3d spoke = quat * (side * _radius);
         osg::Vec3d end = _centerWorld + spoke;
-        osg::ref_ptr<DPLineSegmentIntersector> dplsi = new DPLineSegmentIntersector( _centerWorld, end );
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> dplsi = new osgUtil::LineSegmentIntersector( _centerWorld, end );
         ivGroup->addIntersector( dplsi.get() );
     }
 
@@ -297,11 +297,11 @@ RadialLineOfSightNode::compute_line(osg::Node* node)
 
     for (unsigned int i = 0; i < (unsigned int)_numSpokes; i++)
     {
-        DPLineSegmentIntersector* los = dynamic_cast<DPLineSegmentIntersector*>(ivGroup->getIntersectors()[i].get());
+        osgUtil::LineSegmentIntersector* los = dynamic_cast<osgUtil::LineSegmentIntersector*>(ivGroup->getIntersectors()[i].get());
         if ( !los )
             continue;
 
-        DPLineSegmentIntersector::Intersections& hits = los->getIntersections();
+        osgUtil::LineSegmentIntersector::Intersections& hits = los->getIntersections();
 
         osg::Vec3d start = los->getStart();
         osg::Vec3d end = los->getEnd();
@@ -371,7 +371,7 @@ RadialLineOfSightNode::compute_line(osg::Node* node)
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( geometry );
 
-    getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    GLUtils::setLighting(getOrCreateStateSet(), osg::StateAttribute::OFF);
 
     osg::MatrixTransform* mt = new osg::MatrixTransform;
     mt->setMatrix(osg::Matrixd::translate(_centerWorld));
@@ -415,11 +415,10 @@ RadialLineOfSightNode::compute_fill(osg::Node* node)
     verts->reserve(_numSpokes * 2);
     geometry->setVertexArray( verts );
 
-    osg::Vec4Array* colors = new osg::Vec4Array();
+    osg::Vec4Array* colors = new osg::Vec4Array(osg::Array::BIND_PER_VERTEX);
     colors->reserve( _numSpokes * 2 );
 
     geometry->setColorArray( colors );
-    geometry->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
 
     osg::ref_ptr<osgUtil::IntersectorGroup> ivGroup = new osgUtil::IntersectorGroup();
 
@@ -429,7 +428,7 @@ RadialLineOfSightNode::compute_fill(osg::Node* node)
         osg::Quat quat(angle, up );
         osg::Vec3d spoke = quat * (side * _radius);
         osg::Vec3d end = _centerWorld + spoke;        
-        osg::ref_ptr<DPLineSegmentIntersector> dplsi = new DPLineSegmentIntersector( _centerWorld, end );
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> dplsi = new osgUtil::LineSegmentIntersector( _centerWorld, end );
         if (dplsi)
             ivGroup->addIntersector( dplsi.get() );
     }
@@ -442,11 +441,11 @@ RadialLineOfSightNode::compute_fill(osg::Node* node)
     for (unsigned int i = 0; i < (unsigned int)_numSpokes; i++)
     {
         //Get the current hit
-        DPLineSegmentIntersector* los = dynamic_cast<DPLineSegmentIntersector*>(ivGroup->getIntersectors()[i].get());
+        osgUtil::LineSegmentIntersector* los = dynamic_cast<osgUtil::LineSegmentIntersector*>(ivGroup->getIntersectors()[i].get());
         if ( !los )
             continue;
 
-        DPLineSegmentIntersector::Intersections& hits = los->getIntersections();
+        osgUtil::LineSegmentIntersector::Intersections& hits = los->getIntersections();
 
         osg::Vec3d currEnd = los->getEnd();
         bool currHasLOS = hits.empty();
@@ -455,8 +454,8 @@ RadialLineOfSightNode::compute_fill(osg::Node* node)
         //Get the next hit
         unsigned int nextIndex = i + 1;
         if (nextIndex == _numSpokes) nextIndex = 0;
-        DPLineSegmentIntersector* losNext = static_cast<DPLineSegmentIntersector*>(ivGroup->getIntersectors()[nextIndex].get());
-        DPLineSegmentIntersector::Intersections& hitsNext = losNext->getIntersections();
+        osgUtil::LineSegmentIntersector* losNext = static_cast<osgUtil::LineSegmentIntersector*>(ivGroup->getIntersectors()[nextIndex].get());
+        osgUtil::LineSegmentIntersector::Intersections& hitsNext = losNext->getIntersections();
 
         osg::Vec3d nextEnd = losNext->getEnd();
         bool nextHasLOS = hitsNext.empty();
@@ -562,7 +561,7 @@ RadialLineOfSightNode::compute_fill(osg::Node* node)
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( geometry );
 
-    getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    GLUtils::setLighting(getOrCreateStateSet(), osg::StateAttribute::OFF);
     getOrCreateStateSet()->setMode(GL_BLEND, osg::StateAttribute::ON);
 
     osg::MatrixTransform* mt = new osg::MatrixTransform;
@@ -677,7 +676,7 @@ RadialLineOfSightTether::operator()(osg::Node* node, osg::NodeVisitor* nv)
 
         if ( los->getMapNode() )
         {
-            osg::Vec3d worldCenter = getNodeCenter( _node );
+            osg::Vec3d worldCenter = getNodeCenter( _node.get() );
 
             //Convert center to mappoint since that is what LOS expects
             GeoPoint mapCenter;
@@ -747,7 +746,7 @@ _los(los)
 {
 
     _dragger  = new osgEarth::Annotation::SphereDragger(_los->getMapNode());
-    _dragger->addPositionChangedCallback(new RadialLOSDraggerCallback(_los ) );    
+    _dragger->addPositionChangedCallback(new RadialLOSDraggerCallback(_los.get() ) );    
     static_cast<osgEarth::Annotation::SphereDragger*>(_dragger)->setColor(osg::Vec4(0,0,1,0));
     addChild(_dragger);    
 

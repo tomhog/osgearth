@@ -22,6 +22,7 @@
 
 #include <osgViewer/Viewer>
 #include <osgEarth/MapNode>
+#include <osgEarth/ImageLayer>
 #include <osgEarthUtil/ExampleResources>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/Controls>
@@ -700,16 +701,18 @@ main(int argc, char** argv)
     osgEarth::MapNode* mapNode = osgEarth::MapNode::findMapNode( node );
     if ( node )
     {   
-        if (mapNode->getMap()->getNumImageLayers() == 0)
+        ImageLayerVector imageLayers;
+        mapNode->getMap()->getLayers(imageLayers);
+
+        if (imageLayers.empty())
         {
             return usage("Please provide a map with at least one image layer.");
         }
 
         // attach color filter to each layer.
-        unsigned numLayers = mapNode->getMap()->getNumImageLayers();
-        for( unsigned i=0; i<numLayers; ++i )
+        for (unsigned i = 0; i<imageLayers.size(); ++i)
         {
-            ImageLayer* layer = mapNode->getMap()->getImageLayerAt( i );
+            ImageLayer* layer = imageLayers[i].get();
 
             if ( layer->getEnabled() && layer->getVisible() )
             {

@@ -44,6 +44,9 @@ using namespace geos::operation;
 
 #define LC "[GEOS] "
 
+#define GEOS_VERSION_AT_LEAST(MAJOR, MINOR) \
+    ((GEOS_VERSION_MAJOR>MAJOR) || (GEOS_VERSION_MAJOR==MAJOR && GEOS_VERSION_MINOR>=MINOR))
+
 namespace
 {
     geom::CoordinateSequence*
@@ -216,7 +219,11 @@ GEOSContext::GEOSContext()
     geos::geom::PrecisionModel* pm = new geos::geom::PrecisionModel(geom::PrecisionModel::FLOATING);
 
     // Factory will clone the PM
+#if GEOS_VERSION_AT_LEAST(3,6)
+    _factory = geos::geom::GeometryFactory::create( pm );
+#else
     _factory = new geos::geom::GeometryFactory( pm );
+#endif
 
     // Delete the template.
     delete pm;
@@ -224,7 +231,9 @@ GEOSContext::GEOSContext()
 
 GEOSContext::~GEOSContext()
 {
+#if !GEOS_VERSION_AT_LEAST(3,6)
     delete _factory;
+#endif
 }
 
 geom::Geometry*
@@ -233,12 +242,16 @@ GEOSContext::importGeometry(const Symbology::Geometry* input)
     geom::Geometry* output = 0L;
     if ( input && input->isValid() )
     {
+#if GEOS_VERSION_AT_LEAST(3,6)
+        output = import( input, _factory.get() );
+#else
         output = import( input, _factory );
 
         // if output is ok, it will have a pointer to f. this is probably a leak.
         // TODO: Check whether this is a leak!! -gw
         //if ( !output )
         //    delete f;
+#endif
     }
     return output;
 }
@@ -252,7 +265,11 @@ GEOSContext::exportGeometry(const geom::Geometry* input)
 
     if ( dynamic_cast<const geom::Point*>( input ) )
     {
-        OE_NOTICE << LC << "GEOS 'Point' NYI" << std::endl;        
+        const geom::Point* point = dynamic_cast< const geom::Point* >(input);
+        Symbology::PointSet* part = new Symbology::PointSet();
+        const geom::Coordinate* c = point->getCoordinate();
+        part->push_back(osg::Vec3d(c->x, c->y, c->z));
+        return part;
     }
     else if ( dynamic_cast<const geom::MultiPoint*>( input ) )
     {
@@ -331,10 +348,13 @@ GEOSContext::disposeGeometry(geom::Geometry* input)
 {
     if (input)
     {
-        geom::GeometryFactory* f = const_cast<geom::GeometryFactory*>(input->getFactory());
+#if GEOS_VERSION_AT_LEAST(3,6)
         _factory->destroyGeometry(input);
+#else
+        geom::GeometryFactory* f = const_cast<geom::GeometryFactory*>(input->getFactory());
         if ( f != _factory )
             delete f;
+#endif
     }
 }
 

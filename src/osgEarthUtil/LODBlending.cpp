@@ -61,11 +61,11 @@ namespace
         "uniform float oe_tile_birthtime; \n"
         "uniform float oe_lodblend_delay; \n"
         "uniform float oe_lodblend_duration; \n"
-
         "uniform mat4 oe_layer_parent_texmat; \n"
-        "varying vec4 oe_layer_texc; \n"
-        "varying vec4 oe_lodblend_texc; \n"
-        "varying float oe_lodblend_r; \n"
+
+        "out vec4 oe_layer_texc; \n"
+        "out vec4 oe_lodblend_texc; \n"
+        "out float oe_lodblend_r; \n"
 
         "void oe_lodblend_imagery_vertex(inout vec4 VertexVIEW) \n"
         "{ \n"
@@ -86,9 +86,10 @@ namespace
         "#version " GLSL_VERSION_STR "\n"
         GLSL_DEFAULT_PRECISION_FLOAT "\n"
 
-        "attribute vec4 oe_terrain_attr; \n"
-        "attribute vec4 oe_terrain_attr2; \n"
-        "varying vec3 vp_Normal; \n"
+        "in vec4 oe_terrain_attr; \n"
+        "in vec4 oe_terrain_attr2; \n"
+        
+        "vec3 vp_Normal; \n"
 
         "uniform float oe_min_tile_range_factor; \n"
         "uniform vec4 oe_tile_key; \n"
@@ -123,9 +124,10 @@ namespace
         "#version " GLSL_VERSION_STR "\n"
         GLSL_DEFAULT_PRECISION_FLOAT "\n"
 
-        "attribute vec4 oe_terrain_attr; \n"
-        "attribute vec4 oe_terrain_attr2; \n"
-        "varying vec3 vp_Normal; \n"
+        "in vec4 oe_terrain_attr; \n"
+        "in vec4 oe_terrain_attr2; \n"
+
+        "vec3 vp_Normal; \n"
 
         "uniform float oe_min_tile_range_factor; \n"
         "uniform vec4 oe_tile_key; \n"
@@ -134,11 +136,11 @@ namespace
         "uniform float oe_lodblend_delay; \n"
         "uniform float oe_lodblend_duration; \n"
         "uniform float oe_lodblend_vscale; \n"
-
         "uniform mat4 oe_layer_parent_texmat; \n"
-        "varying vec4 oe_layer_texc; \n"
-        "varying vec4 oe_lodblend_texc; \n"
-        "varying float oe_lodblend_r; \n"
+
+        "out vec4 oe_layer_texc; \n"
+        "out vec4 oe_lodblend_texc; \n"
+        "out float oe_lodblend_r; \n"
 
         "void oe_lodblend_combined_vertex(inout vec4 VertexMODEL) \n"
         "{ \n"
@@ -172,21 +174,27 @@ namespace
 
         "uniform vec4 oe_tile_key; \n"
         "uniform int oe_layer_uid; \n"
-        "varying vec4 oe_lodblend_texc; \n"
-        "varying float oe_lodblend_r; \n"
         "uniform sampler2D oe_layer_tex_parent; \n"
+
+        "in vec4 oe_lodblend_texc; \n"
+        "in float oe_lodblend_r; \n"
 
         "void oe_lodblend_imagery_fragment(inout vec4 color) \n"
         "{ \n"
         "    if ( oe_layer_uid >= 0 ) \n"
         "    { \n"
-        "        vec4 texel = texture2D(oe_layer_tex_parent, oe_lodblend_texc.st); \n"
+        "        vec4 texel = texture(oe_layer_tex_parent, oe_lodblend_texc.st); \n"
         "        float enable = step(0.09, texel.a); \n"          // did we get a parent texel?
         "        texel.rgb = mix(color.rgb, texel.rgb, enable); \n" // if not, use the incoming color for the blend
         "        texel.a = mix(0.0, color.a, enable); \n"           // ...and blend from alpha=0 for a fade-in effect.
         "        color = mix(color, texel, oe_lodblend_r); \n"
         "    } \n"
         "} \n";
+}
+
+LODBlending::LODBlending()
+{
+    init();
 }
 
 

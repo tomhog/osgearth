@@ -24,9 +24,10 @@
 #include <osgEarth/Notify>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
-
-#include <osgEarth/Cache>
-#include <osgEarthDrivers/cache_filesystem/FileSystemCache>
+#include <osgEarth/MapNode>
+#include <osgEarth/ThreadingUtils>
+#include <osgEarth/Metrics>
+#include <iostream>
 
 #define LC "[viewer] "
 
@@ -43,6 +44,7 @@ usage(const char* name)
     return 0;
 }
 
+
 int
 main(int argc, char** argv)
 {
@@ -51,9 +53,6 @@ main(int argc, char** argv)
     // help?
     if ( arguments.read("--help") )
         return usage(argv[0]);
-
-    float vfov = -1.0f;
-    arguments.read("--vfov", vfov);
 
     // create a viewer:
     osgViewer::Viewer viewer(arguments);
@@ -75,23 +74,18 @@ main(int argc, char** argv)
     // closer to the ground without near clipping. If you need more, use --logdepth
     viewer.getCamera()->setNearFarRatio(0.0001);
 
-    if ( vfov > 0.0 )
-    {
-        double fov, ar, n, f;
-        viewer.getCamera()->getProjectionMatrixAsPerspective(fov, ar, n, f);
-        viewer.getCamera()->setProjectionMatrixAsPerspective(vfov, ar, n, f);
-    }
-
     // load an earth file, and support all or our example command-line options
     // and earth file <external> tags    
     osg::Node* node = MapNodeHelper().load(arguments, &viewer);
     if ( node )
     {
         viewer.setSceneData( node );
-        viewer.run();
+        Metrics::run(viewer);
     }
     else
     {
         return usage(argv[0]);
     }
+
+    return 0;
 }

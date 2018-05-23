@@ -40,6 +40,7 @@
 #include <osgEarthUtil/Controls>
 #include <osgEarthUtil/ExampleResources>
 #include <osgEarthUtil/LogarithmicDepthBuffer>
+#include <osgEarthUtil/ViewFitter>
 #include <osgEarthAnnotation/AnnotationUtils>
 #include <osgEarthAnnotation/LabelNode>
 #include <osgEarthSymbology/Style>
@@ -261,7 +262,7 @@ namespace
 
 
     /**
-     * Handler to toggle "viewpoint transtion arcing", which causes the camera to "arc"
+     * Handler to toggle "viewpoint transition arcing", which causes the camera to "arc"
      * as it travels from one viewpoint to another.
      */
     struct ToggleArcViewpointTransitionsHandler : public osgGA::GUIEventHandler
@@ -520,6 +521,48 @@ namespace
         osg::ref_ptr<EarthManipulator> _manip;
         double _vfov, _ar, _zn, _zf;
     };
+    
+    struct FitViewToPoints : public osgGA::GUIEventHandler
+    {
+        std::vector<GeoPoint> _points;
+        const SpatialReference* _mapSRS;
+
+        FitViewToPoints(char key, EarthManipulator* manip, const SpatialReference* mapSRS)
+            : _key(key), _manip(manip), _mapSRS(mapSRS)
+        {
+            // Set up a list of control points
+            const SpatialReference* srs = SpatialReference::get("wgs84");
+            _points.push_back(GeoPoint(srs, -120, 30, 0));
+            _points.push_back(GeoPoint(srs, -100, 45, 0));
+        }
+
+        bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
+        {
+            if (ea.getEventType() == ea.KEYDOWN && ea.getKey() == _key)
+            {
+                ViewFitter fitter(_mapSRS, aa.asView()->getCamera());
+                fitter.setBuffer( 100000.0 );
+                Viewpoint vp;
+                if (fitter.createViewpoint(_points, vp))
+                {
+                    _manip->setViewpoint(vp);
+                    aa.requestRedraw();
+                }
+                return true;
+            }
+            return false;
+        }
+
+        void getUsage(osg::ApplicationUsage& usage) const
+        {
+            using namespace std;
+            usage.addKeyboardMouseBinding(string(1, _key), string("FitViewToPoints"));
+        }
+
+        char _key;
+        osg::ref_ptr<EarthManipulator> _manip;
+    };
+        
 
     /**
      * A simple simulator that moves an object around the Earth. We use this to
@@ -638,23 +681,23 @@ int main(int argc, char** argv)
     osgEarth::MapNode* mapNode = osgEarth::MapNode::findMapNode( earthNode );
 
     // user model?
-    osg::Node* model = 0L;
+    osg::ref_ptr<osg::Node> model;
     std::string modelFile;
     if (arguments.read("--model", modelFile))
-        model = osgDB::readNodeFile(modelFile + ".osgearth_shadergen");
+        model = osgDB::readRefNodeFile(modelFile + ".osgearth_shadergen");
 
     osg::Group* sims = new osg::Group();
     root->addChild( sims );
 
     // Simulator for tethering:
-    Simulator* sim1 = new Simulator(sims, manip, mapNode, model, "Thing 1", '8');
+    Simulator* sim1 = new Simulator(sims, manip, mapNode, model.get(), "Thing 1", '8');
     sim1->_lat0 = 55.0;
     sim1->_lon0 = 45.0;
     sim1->_lat1 = -55.0;
     sim1->_lon1 = -45.0;
     viewer.addEventHandler(sim1);
 
-    Simulator* sim2 = new Simulator(sims, manip, mapNode, model, "Thing 2", '9');
+    Simulator* sim2 = new Simulator(sims, manip, mapNode, model.get(), "Thing 2", '9');
     sim2->_name = "Thing 2";
     sim2->_lat0 = 54.0;
     sim2->_lon0 = 45.0;
@@ -681,6 +724,11 @@ int main(int argc, char** argv)
         osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON,
         osgGA::GUIEventAdapter::MODKEY_SHIFT );
 
+    manip->getSettings()->bindMouseClick(
+        EarthManipulator::ACTION_GOTO,
+        osgGA::GUIEventAdapter::LEFT_MOUSE_BUTTON,
+        osgGA::GUIEventAdapter::MODKEY_SHIFT);
+
     manip->getSettings()->setArcViewpointTransitions( true );    
 
     manip->setTetherCallback( new TetherCB() );
@@ -696,6 +744,8 @@ int main(int argc, char** argv)
     viewer.addEventHandler(new SetPositionOffset(manip));
     viewer.addEventHandler(new ToggleLDB('L'));
     viewer.addEventHandler(new ToggleSSL(sims, ')'));
+
+    viewer.addEventHandler(new FitViewToPoints('j', manip, mapNode->getMapSRS()));
 
     viewer.getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
 

@@ -23,8 +23,11 @@
 #include <osgEarthQt/DataManager>
 #include <osgEarthQt/GuiActions>
 
-
 #include <osgEarth/Map>
+#include <osgEarth/ImageLayer>
+#include <osgEarth/ElevationLayer>
+#include <osgEarth/ModelLayer>
+#include <osgEarth/MaskLayer>
 #include <osgEarth/Viewpoint>
 #include <osgEarthAnnotation/AnnotationNode>
 
@@ -113,7 +116,7 @@ namespace
           osgEarth::ModelLayer* model = dynamic_cast<osgEarth::ModelLayer*>(_layer.get());
           if (model && _map.valid())
           {
-            osg::ref_ptr<osg::Node> temp = model->getOrCreateSceneGraph( _map.get(), _map->getReadOptions(), 0L );
+            osg::ref_ptr<osg::Node> temp = model->getOrCreateNode();
             if (temp.valid())
             {
               osg::NodePathList nodePaths = temp->getParentalNodePaths();
@@ -428,10 +431,10 @@ void MapCatalogWidget::refreshElevationLayers()
     _elevationsItem->takeChildren();
 	  
     osgEarth::ElevationLayerVector layers;
-    _map->getElevationLayers(layers);
+    _map->getLayers(layers);
     for (osgEarth::ElevationLayerVector::const_iterator it = layers.begin(); it != layers.end(); ++it)
     {
-      LayerTreeItem* layerItem = new LayerTreeItem(*it, _map);
+      LayerTreeItem* layerItem = new LayerTreeItem(it->get(), _map.get());
       layerItem->setText(0, QString( (*it)->getName().c_str() ) );
       //layerItem->setCheckState(0, (*it)->getVisible() ? Qt::Checked : Qt::Unchecked);
 			_elevationsItem->addChild(layerItem);
@@ -462,10 +465,10 @@ void MapCatalogWidget::refreshImageLayers()
     _imagesItem->takeChildren();
 
     osgEarth::ImageLayerVector layers;
-    _map->getImageLayers(layers);
+    _map->getLayers(layers);
     for (osgEarth::ImageLayerVector::const_iterator it = layers.begin(); it != layers.end(); ++it)
     {
-      LayerTreeItem* layerItem = new LayerTreeItem(*it, _map);
+      LayerTreeItem* layerItem = new LayerTreeItem(it->get(), _map.get());
       layerItem->setText(0, QString( (*it)->getName().c_str() ) );
 			layerItem->setCheckState(0, (*it)->getVisible() ? Qt::Checked : Qt::Unchecked);
 			_imagesItem->addChild(layerItem);
@@ -496,10 +499,11 @@ void MapCatalogWidget::refreshModelLayers()
     _modelsItem->takeChildren();
 
     osgEarth::ModelLayerVector layers;
-    _map->getModelLayers(layers);
+    _map->getLayers(layers);
+
     for (osgEarth::ModelLayerVector::const_iterator it = layers.begin(); it != layers.end(); ++it)
     {
-      LayerTreeItem* layerItem = new LayerTreeItem(*it, _map);
+      LayerTreeItem* layerItem = new LayerTreeItem(it->get(), _map.get());
       layerItem->setText(0, QString( (*it)->getName().c_str() ) );
 			layerItem->setCheckState(0, (*it)->getVisible() ? Qt::Checked : Qt::Unchecked);
 			_modelsItem->addChild(layerItem);
@@ -533,12 +537,12 @@ void MapCatalogWidget::refreshAnnotations()
     _manager->getAnnotations(annos);
     for (AnnotationVector::const_iterator it = annos.begin(); it != annos.end(); ++it)
     {
-        AnnotationTreeItem* annoItem = new AnnotationTreeItem(*it, _map);
+        AnnotationTreeItem* annoItem = new AnnotationTreeItem(it->get(), _map.get());
         annoItem->setText(0, QString( (*it)->getName().c_str() ) );
         annoItem->setCheckState(0, (*it)->getNodeMask() != 0 ? Qt::Checked : Qt::Unchecked);
         _annotationsItem->addChild(annoItem);
 
-      if (_manager->isSelected(*it))
+      if (_manager->isSelected(it->get()))
         annoItem->setSelected(true);
     }
 
@@ -567,10 +571,11 @@ void MapCatalogWidget::refreshMaskLayers()
     _masksItem->takeChildren();
 
     osgEarth::MaskLayerVector layers;
-    _map->getTerrainMaskLayers(layers);
+    _map->getLayers(layers);
+
     for (osgEarth::MaskLayerVector::const_iterator it = layers.begin(); it != layers.end(); ++it)
     {
-      CustomActionTreeItem* layerItem = new CustomActionTreeItem(*it);
+      CustomActionTreeItem* layerItem = new CustomActionTreeItem((*it).get());
       layerItem->setText(0, QString((*it)->getName().c_str()));
 			_masksItem->addChild(layerItem);
     }

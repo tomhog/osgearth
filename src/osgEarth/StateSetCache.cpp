@@ -25,9 +25,7 @@
 
 #define DEFAULT_PRUNE_ACCESS_COUNT 40
 
-#if OSG_MIN_VERSION_REQUIRED(3,1,4)
-#   define STATESET_SHARING_SUPPORTED 1
-#endif
+#define STATESET_SHARING_SUPPORTED 1
 
 using namespace osgEarth;
 
@@ -122,27 +120,6 @@ namespace
             traverse(node);
         }
 
-        void apply(osg::Geode& geode)
-        {
-            unsigned numDrawables = geode.getNumDrawables();
-            for( unsigned i=0; i<numDrawables; ++i )
-            {
-                osg::Drawable* d = geode.getDrawable(i);
-                if (d && d->getStateSet() )
-                {
-                    // ref for thread-safety; another thread might replace this stateset
-                    // during optimization while we're looking at it.
-                    osg::ref_ptr<osg::StateSet> stateset = d->getStateSet();
-                    if (stateset.valid() &&
-                        stateset->getDataVariance() != osg::Object::DYNAMIC)
-                    {
-                        applyStateSet( stateset.get() );
-                    }
-                }
-            }
-            apply((osg::Node&)geode);
-        }
-
         // assume: stateSet is safely referenced by caller
         void applyStateSet(osg::StateSet* stateSet)
         {
@@ -215,31 +192,6 @@ namespace
                 }
             }
             traverse(node);
-        }
-
-        void apply(osg::Geode& geode)
-        {
-            unsigned numDrawables = geode.getNumDrawables();
-            for( unsigned i=0; i<numDrawables; ++i )
-            {
-                osg::Drawable* d = geode.getDrawable(i);
-                if ( d && d->getStateSet())
-                {
-                    osg::ref_ptr<osg::StateSet> stateset = d->getStateSet();
-                    if (stateset.valid() && isEligible(stateset.get()))
-                    {
-                        _stateSets++;
-                        osg::ref_ptr<osg::StateSet> shared;
-                        if ( _cache->share(stateset, shared) )
-                        {
-                            d->setStateSet( shared.get() );
-                            _shares++;
-                        }
-                        //else _misses.push_back(in.get());
-                    }
-                }
-            }
-            apply((osg::Node&)geode);
         }
     };
 }
@@ -461,6 +413,7 @@ StateSetCache::clear()
 {
     Threading::ScopedMutexLock lock( _mutex );
 
+    prune();
     _stateAttributeCache.clear();
     _stateSetCache.clear();
 }

@@ -32,6 +32,21 @@
 
 using namespace osgEarth;
 
+
+// serializer for osg::DummyObject (not present in OSG)
+// We need this because the osgDB::DatabasePager will sometimes
+// add a DummyObject to textures that it finds in paged objects.
+namespace osg
+{
+    REGISTER_OBJECT_WRAPPER(DummyObject,
+                            new osg::DummyObject,
+                            osg::DummyObject,
+                            "osg::DummyObject")
+    {
+        //nop
+    }
+}
+
 namespace
 {
 #undef  LC
@@ -69,22 +84,12 @@ namespace
             traverse(node);
         }
 
-        void apply(osg::Geode& geode)
+        void apply(osg::Drawable& drawable)
         {
-            for (unsigned i = 0; i < geode.getNumDrawables(); ++i)
-            {
-                apply(geode.getDrawable(i));
-            }
-            apply(static_cast<osg::Node&>(geode));
-        }
-
-        void apply(osg::Drawable* drawable)
-        {
-            if (!drawable) return;
-            apply(drawable->getStateSet());
-            applyUserData(*drawable);
+            apply(drawable.getStateSet());
+            applyUserData(drawable);
             
-            osg::Geometry* geom = drawable->asGeometry();
+            osg::Geometry* geom = drawable.asGeometry();
             if (geom)
                 apply(geom);
         }
@@ -131,6 +136,8 @@ namespace
                         {              
                             tex->setUnRefImageDataAfterApply(false);               
 
+#if 0 // took this out in favor of the osg::DummyObject serializer above.
+
                             // OSG's DatabasePager attaches "marker objects" to Textures' UserData when it runs a
                             // FindCompileableGLObjectsVisitor. This operation is not thread-safe; it doesn't
                             // account for the possibility that the texture may already be in use elsewhere.
@@ -144,7 +151,6 @@ namespace
                             // This "hack" prevents a crash in OSG 3.4.0 when trying to modify and then write
                             // serialize the scene graph containing these shared texture objects.
                             // Kudos to Jason B for figuring this one out.
-
                             osg::Texture* texClone = osg::clone(tex, osg::CopyOp::SHALLOW_COPY);
                             if ( texClone )
                             {
@@ -165,6 +171,7 @@ namespace
                             {
                                 OE_WARN << LC << "Texture clone failed.\n";
                             }
+#endif
                         }
                         else
                         {

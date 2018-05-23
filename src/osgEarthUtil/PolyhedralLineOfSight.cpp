@@ -38,8 +38,8 @@ namespace
     struct TerrainChangedCallback : public osgEarth::TerrainCallback
     {
         TerrainChangedCallback( PolyhedralLineOfSightNode* los ) : _los(los) { }
-        void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* terrain, TerrainCallbackContext& ) {
-            _los->terrainChanged( tileKey, terrain );
+        void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* graph, TerrainCallbackContext& ) {
+            _los->terrainChanged( tileKey, graph );
         }
         PolyhedralLineOfSightNode* _los;
     };
@@ -70,7 +70,7 @@ _distance    ( Distance(50000.0, Units::METERS) )
     _terrainCallback = new TerrainChangedCallback(this);
     
     if ( mapNode )
-        mapNode->getTerrain()->addTerrainCallback( _terrainCallback );
+        mapNode->getTerrain()->addTerrainCallback( _terrainCallback.get() );
 
     osg::StateSet* stateSet = this->getOrCreateStateSet();
     stateSet->setMode( GL_BLEND, 1 );
@@ -227,13 +227,11 @@ PolyhedralLineOfSightNode::rebuildGeometry()
     geom->setVertexArray( verts );
     verts->getVertexBufferObject()->setUsage(GL_DYNAMIC_DRAW_ARB);
 
-    osg::Vec4Array* colors = new osg::Vec4Array();
+    osg::Vec4Array* colors = new osg::Vec4Array(osg::Array::BIND_PER_VERTEX);
     geom->setColorArray( colors );
-    geom->setColorBinding( osg::Geometry::BIND_PER_VERTEX );
 
-    osg::Vec3Array* normals = new osg::Vec3Array();
+    osg::Vec3Array* normals = new osg::Vec3Array(osg::Array::BIND_PER_VERTEX);
     geom->setNormalArray( normals );
-    geom->setNormalBinding( osg::Geometry::BIND_PER_VERTEX );
 
     double azim0   = _startAzim.as(Units::RADIANS);
     double azim1   = _endAzim.as(Units::RADIANS);

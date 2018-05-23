@@ -27,6 +27,7 @@
 #include <osgGA/GUIEventHandler>
 #include <osgViewer/Viewer>
 #include <osgEarth/VirtualProgram>
+#include <osgEarth/GLUtils>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 
@@ -105,10 +106,9 @@ createFramebufferQuad(App& app)
     t->push_back(osg::Vec2(0,h));
     g->setTexCoordArray(0, t);
 
-    osg::Vec4Array* c = new osg::Vec4Array();
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL);
     c->push_back(osg::Vec4(1,1,1,1));
     g->setColorArray(c);
-    g->setColorBinding(osg::Geometry::BIND_OVERALL);
 
     g->addPrimitiveSet(new osg::DrawArrays(GL_QUADS, 0, 4));
 
@@ -126,61 +126,50 @@ createFramebufferPass(App& app)
     osg::StateSet* stateset = quad->getOrCreateStateSet();
 
     static const char* vertSource =
-        "varying vec4 texcoord;\n"
+        "out vec4 texcoord;\n"
         "void effect_vert(inout vec4 vertexView)\n"
         "{\n"
         "    texcoord = gl_MultiTexCoord0; \n"
         "}\n";
 
+    // fragment shader that performs edge detection and tints edges red.
     static const char* fragSource =
         "#version " GLSL_VERSION_STR "\n"
         "#extension GL_ARB_texture_rectangle : enable\n"
         "uniform sampler2DRect gcolor;\n"
         "uniform sampler2DRect gnormal;\n"
         "uniform sampler2DRect gdepth;\n"
-        "varying vec4 texcoord;\n"
+        "uniform float osg_FrameTime;\n"
+        "in vec4 texcoord;\n"
 
         "void effect_frag(inout vec4 color)\n"
         "{\n"
-        "    color = texture2DRect(gcolor, texcoord.st); \n"
-        "    float depth = texture2DRect(gdepth, texcoord.st).r; \n"
-        "    vec3 normal = texture2DRect(gnormal,texcoord.st).xyz *2.0-1.0; \n"
+        "    color = texture(gcolor, texcoord.st); \n"
+        "    float depth = texture(gdepth, texcoord.st).r; \n"
+        "    vec3 normal = texture(gnormal,texcoord.st).xyz *2.0-1.0; \n"
 
         // sample radius in pixels:
-        "    float e = 5.0; \n"
+        "    float e = 25.0 * sin(osg_FrameTime); \n"
 
         // sample the normals around our pixel and find the approximate
         // deviation from our center normal:
         "    vec3 avgNormal =\n"
-        "       texture2DRect(gnormal, texcoord.st+vec2( e, e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2(-e, e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2(-e,-e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2( e,-e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2( 0, e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2( e, 0)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2( 0,-e)).xyz + \n"
-        "       texture2DRect(gnormal, texcoord.st+vec2(-e, 0)).xyz;  \n"
+        "       texture(gnormal, texcoord.st+vec2( e, e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2(-e, e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2(-e,-e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2( e,-e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2( 0, e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2( e, 0)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2( 0,-e)).xyz + \n"
+        "       texture(gnormal, texcoord.st+vec2(-e, 0)).xyz;  \n"
         "    avgNormal = normalize((avgNormal/8.0)*2.0-1.0); \n"
+
+        // average deviation from normal:
         "    float deviation = clamp(dot(normal, avgNormal),0.0,1.0); \n"
 
-        // set a blur factor based on the normal deviation, so that we
-        // blur more around edges.
+        // use that to tint the pixel red:
         "    e = 2.5 * (1.0-deviation); \n"
-
-        "    vec4 blurColor = \n"
-        "       color + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2( e, e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2(-e, e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2(-e,-e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2( e,-e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2( 0, e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2( e, 0)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2( 0,-e)) + \n"
-        "       texture2DRect(gcolor, texcoord.st+vec2(-e, 0));  \n"
-        "    blurColor /= 9.0; \n"
-
-        // blur the color and darken the edges at the same time
-        "    color.rgb = blurColor.rgb * deviation; \n"
+        "    color.rgb = color.rgb + vec3(e,0,0);\n"
         "}\n";
 
     VirtualProgram* vp = VirtualProgram::getOrCreate(stateset);
@@ -193,7 +182,7 @@ createFramebufferPass(App& app)
     stateset->addUniform(new osg::Uniform("gnormal", 1));
     stateset->setTextureAttributeAndModes(2, app.gdepth, 1);
     stateset->addUniform(new osg::Uniform("gdepth", 2));
-    stateset->setMode( GL_LIGHTING, 0 );
+    GLUtils::setLineWidth(stateset, 2.0f, 1);
 
     float w = app.gcolor->getTextureWidth();
     float h = app.gcolor->getTextureHeight();

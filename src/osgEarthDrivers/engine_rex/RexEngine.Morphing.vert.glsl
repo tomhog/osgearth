@@ -1,10 +1,13 @@
 #version $GLSL_VERSION_STR
+$GLSL_DEFAULT_PRECISION_FLOAT
 
 #pragma vp_name       REX Engine - Morphing
 #pragma vp_entryPoint oe_rexEngine_morph
 #pragma vp_location   vertex_model
 #pragma vp_order      0.5
-#pragma vp_define     OE_REX_VERTEX_MORPHING
+
+#pragma import_defines(OE_TERRAIN_MORPH_GEOMETRY, OE_TERRAIN_RENDER_ELEVATION, OE_IS_DEPTH_CAMERA)
+
 
 // stage
 vec3 vp_Normal; // up vector
@@ -14,20 +17,24 @@ vec4 oe_layer_tilec;
 
 out float oe_rex_morphFactor;
 
-uniform sampler2D oe_tile_elevationTex;
-uniform mat4      oe_tile_elevationTexMatrix;
-uniform vec2	  oe_tile_morph;
-uniform float     oe_tile_size;
-uniform vec4	  oe_tile_key;
+flat out int oe_terrain_vertexMarker;
+
+uniform vec2  oe_tile_morph;
+uniform float oe_tile_size;
+
+#ifdef OE_IS_DEPTH_CAMERA
+uniform mat4 oe_shadowToPrimaryMatrix;
+#endif
 
 // SDK functions:
 float oe_terrain_getElevation(in vec2 uv);
 
 // Vertex Markers:
-#define MASK_MARKER_DISCARD  0.0
-#define MASK_MARKER_NORMAL   1.0
-#define MASK_MARKER_SKIRT    2.0
-#define MASK_MARKER_BOUNDARY 3.0
+#define VERTEX_MARKER_DISCARD  1
+#define VERTEX_MARKER_GRID     2
+#define VERTEX_MARKER_PATCH    4
+#define VERTEX_MARKER_BOUNDARY 8
+#define VERTEX_MARKER_SKIRT    16
 
 
 // Morphs a vertex using a neighbor.
@@ -52,12 +59,18 @@ float oe_rex_ComputeMorphFactor(in vec4 position, in vec3 up)
     // assume with no morphing)
 	vec4 wouldBePosition = position;
 
-	#ifdef OE_REX_VERTEX_MORPHING
+#ifdef OE_TERRAIN_RENDER_ELEVATION
         float elev = oe_terrain_getElevation( oe_layer_tilec.st );
 		wouldBePosition.xyz += up*elev;
-	#endif
+#endif
 
     vec4 wouldBePositionView = gl_ModelViewMatrix * wouldBePosition;
+
+#ifdef OE_IS_DEPTH_CAMERA
+    // For a depth camera, we have to compute the morphed position
+    // from the perspective of the primary camera so they match up:
+    wouldBePositionView = oe_shadowToPrimaryMatrix * wouldBePositionView;
+#endif
     
     float fDistanceToEye = length(wouldBePositionView.xyz); // or just -z.
 	float fMorphLerpK  = 1.0f - clamp( oe_tile_morph[0] - fDistanceToEye * oe_tile_morph[1], 0.0, 1.0 );
@@ -70,11 +83,11 @@ void oe_rexEngine_morph(inout vec4 vertexModel)
     // compute the morphing factor to send down the pipe.
     // we need this even if vertex-morphing is off since we use it for 
     // other things (like image blending)
-    if (oe_layer_tilec.z == MASK_MARKER_NORMAL)
+    if ((oe_terrain_vertexMarker & VERTEX_MARKER_GRID) != 0)
     {
         oe_rex_morphFactor = oe_rex_ComputeMorphFactor(vertexModel, vp_Normal);    
 
-#ifdef OE_REX_VERTEX_MORPHING
+#ifdef OE_TERRAIN_MORPH_GEOMETRY
         vec3 neighborVertexModel = gl_MultiTexCoord1.xyz;
         oe_rex_MorphVertex(vertexModel.xyz, oe_layer_tilec.st, neighborVertexModel.xyz);
 #endif
@@ -84,4 +97,3 @@ void oe_rexEngine_morph(inout vec4 vertexModel)
         oe_rex_morphFactor = 0.0;
     }
 }
-

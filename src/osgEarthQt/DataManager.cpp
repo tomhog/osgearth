@@ -24,6 +24,9 @@
 #include <osgEarth/Map>
 #include <osgEarth/MapModelChange>
 #include <osgEarth/MapNode>
+#include <osgEarth/ImageLayer>
+#include <osgEarth/ElevationLayer>
+#include <osgEarth/ModelLayer>
 
 using namespace osgEarth::QtGui;
 using namespace osgEarth::Annotation;
@@ -59,19 +62,19 @@ void DataManager::initialize()
   if (_map)
   {
     osgEarth::ElevationLayerVector elevLayers;
-    _map->getElevationLayers(elevLayers);
+    _map->getLayers(elevLayers);
     for (osgEarth::ElevationLayerVector::const_iterator it = elevLayers.begin(); it != elevLayers.end(); ++it)
-      (*it)->addCallback(_elevationCallback);
+      (*it)->addCallback(_elevationCallback.get());
 
     osgEarth::ImageLayerVector imageLayers;
-    _map->getImageLayers(imageLayers);
+    _map->getLayers(imageLayers);
     for (osgEarth::ImageLayerVector::const_iterator it = imageLayers.begin(); it != imageLayers.end(); ++it)
-      (*it)->addCallback(_imageCallback);
+      (*it)->addCallback(_imageCallback.get());
 
     osgEarth::ModelLayerVector modelLayers;
-    _map->getModelLayers(modelLayers);
+    _map->getLayers(modelLayers);
     for (osgEarth::ModelLayerVector::const_iterator it = modelLayers.begin(); it != modelLayers.end(); ++it)
-      (*it)->addCallback(_modelCallback);
+      (*it)->addCallback(_modelCallback.get());
 
     _map->addMapCallback(new DataManagerMapCallback(this));
   }
@@ -133,7 +136,7 @@ void DataManager::removeAnnotation(osgEarth::Annotation::AnnotationNode* annotat
 
   if (removed)
   {
-    emit annotationRemoved(annoToRemove);
+    emit annotationRemoved(annoToRemove.get());
     emit mapChanged();
   }
 }
@@ -253,19 +256,26 @@ void DataManager::onMapChanged(const osgEarth::MapModelChange& change)
 {
   switch( change.getAction() )
   {
-  case MapModelChange::ADD_ELEVATION_LAYER: 
-    change.getElevationLayer()->addCallback(_elevationCallback); break;
-  case MapModelChange::ADD_IMAGE_LAYER:
-    change.getImageLayer()->addCallback(_imageCallback); break;
-  case MapModelChange::ADD_MODEL_LAYER:
-		change.getModelLayer()->addCallback(_modelCallback); break;
-  case MapModelChange::REMOVE_ELEVATION_LAYER:
-    change.getElevationLayer()->removeCallback(_elevationCallback); break;
-  case MapModelChange::REMOVE_IMAGE_LAYER:
-    change.getImageLayer()->removeCallback(_imageCallback); break;
-  case MapModelChange::REMOVE_MODEL_LAYER:
-    change.getModelLayer()->removeCallback(_modelCallback); break;
-  default: break;
+  case MapModelChange::ADD_LAYER: 
+      if (change.getElevationLayer())
+        change.getElevationLayer()->addCallback(_elevationCallback.get());
+      else if (change.getImageLayer())
+        change.getImageLayer()->addCallback(_imageCallback.get());
+      else if (change.getModelLayer())
+          change.getModelLayer()->addCallback(_modelCallback.get());
+      break;
+
+  case MapModelChange::REMOVE_LAYER:
+      if (change.getElevationLayer())
+        change.getElevationLayer()->removeCallback(_elevationCallback.get());
+      else if (change.getImageLayer())
+        change.getImageLayer()->removeCallback(_imageCallback.get());
+      else if (change.getModelLayer())
+          change.getModelLayer()->removeCallback(_modelCallback.get());
+      break;
+
+  default:
+      break;
   }
 
   onMapChanged();

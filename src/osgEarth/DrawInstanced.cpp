@@ -42,7 +42,6 @@ using namespace osgEarth::DrawInstanced;
 
 // Ref: http://sol.gfxile.net/instancing.html
 
-#define POSTEX_TBO_UNIT 5
 #define TAG_MATRIX_VECTOR "osgEarth::DrawInstanced::MatrixRefVector"
 
 //Uncomment to experiment with instance count adjustment
@@ -74,7 +73,6 @@ namespace
             osg::Vec3d centerView = bbox.center() * ri.getState()->getModelViewMatrix();
             float rangeToBS = (float)-centerView.z() - radius;
 
-#if OSG_MIN_VERSION_REQUIRED(3,3,0)
             // check for inherit mode (3.3.0+ only)
             osg::Camera* cam = ri.getCurrentCamera();
 
@@ -90,7 +88,6 @@ namespace
                     rangeToBS = (float)(-centerRefView.z() - radius);
                 }
             }
-#endif
 
             // these should obviously be programmable
             const float maxDistance = 2000.0f;
@@ -127,28 +124,7 @@ namespace
     };
 
     typedef std::map< osg::ref_ptr<osg::Node>, std::vector<ModelInstance> > ModelInstanceMap;
-    
-    /**
-     * Simple bbox callback to return a static bbox.
-     */
-    struct StaticBoundingBox : public osg::Drawable::ComputeBoundingBoxCallback
-    {
-        osg::BoundingBox _bbox;
-        StaticBoundingBox( const osg::BoundingBox& bbox ) : _bbox(bbox) { }
-        osg::BoundingBox computeBound(const osg::Drawable&) const { return _bbox; }
-    };
 
-    // assume x is positive
-    static int nextPowerOf2(int x)
-    {
-        --x;
-        x |= x >> 1;
-        x |= x >> 2;
-        x |= x >> 4;
-        x |= x >> 8;
-        x |= x >> 16;
-        return x+1;
-    }
 }
 
 //----------------------------------------------------------------------
@@ -156,55 +132,49 @@ namespace
 
 ConvertToDrawInstanced::ConvertToDrawInstanced(unsigned                numInstances,
                                                const osg::BoundingBox& bbox,
-                                               bool                    optimize ) :
-_numInstances    ( numInstances ),
-_optimize        ( optimize )
+                                               bool                    optimize,
+                                               osg::TextureBuffer*     tbo,
+                                               int                     defaultUnit) :
+_numInstances( numInstances ),
+_bbox(bbox),
+_optimize( optimize ),
+_tbo(tbo),
+_tboUnit(defaultUnit)
 {
     setTraversalMode( TRAVERSE_ALL_CHILDREN );
     setNodeMaskOverride( ~0 );
-
-    _staticBBoxCallback = new StaticBoundingBox(bbox);
 }
 
 
 void 
-ConvertToDrawInstanced::apply( osg::Geode& geode )
+ConvertToDrawInstanced::apply(osg::Drawable& drawable)
 {
-    for( unsigned d=0; d<geode.getNumDrawables(); ++d )
+    osg::Geometry* geom = drawable.asGeometry();
+    if ( geom )
     {
-        osg::Geometry* geom = geode.getDrawable(d)->asGeometry();
-        if ( geom )
+        if ( _optimize )
         {
-            if ( _optimize )
-            {
-                // activate VBOs
-                geom->setUseDisplayList( false );
-                geom->setUseVertexBufferObjects( true );
-            }
+            // activate VBOs
+            geom->setUseDisplayList( false );
+            geom->setUseVertexBufferObjects( true );
+        }
 
-            if ( _staticBBoxCallback.valid() )
-            {
-                geom->setComputeBoundingBoxCallback( _staticBBoxCallback.get() ); 
-                geom->dirtyBound();
-            }
+        geom->setInitialBound(_bbox);
 
-            // convert to use DrawInstanced
-            for( unsigned p=0; p<geom->getNumPrimitiveSets(); ++p )
-            {
-                osg::PrimitiveSet* ps = geom->getPrimitiveSet(p);
-                ps->setNumInstances( _numInstances );
-                _primitiveSets.push_back( ps );
-            }
+        // convert to use DrawInstanced
+        for( unsigned p=0; p<geom->getNumPrimitiveSets(); ++p )
+        {
+            osg::PrimitiveSet* ps = geom->getPrimitiveSet(p);
+            ps->setNumInstances( _numInstances );
+            _primitiveSets.push_back( ps );
+        }
 
 #ifdef USE_INSTANCE_LODS
-            geom->setDrawCallback( new LODCallback() );
+        geom->setDrawCallback( new LODCallback() );
 #endif
-        }
     }
-
-    traverse(geode);
+    apply(static_cast<osg::Node&>(drawable));
 }
-
 
 void
 ConvertToDrawInstanced::apply(osg::LOD& lod)
@@ -228,9 +198,20 @@ ConvertToDrawInstanced::apply(osg::LOD& lod)
     // add it back with a full range.
     lod.addChild( highestLOD.get(), 0.0f, FLT_MAX );
 
-    traverse(lod);
+    apply(static_cast<osg::Group&>(lod));
 }
 
+void
+ConvertToDrawInstanced::apply(osg::Node& node)
+{
+    osg::StateSet* stateSet = node.getStateSet();
+    if (stateSet)
+    {
+        int numTexAttrs = stateSet->getNumTextureAttributeLists();
+        _tboUnit = std::max(_tboUnit, numTexAttrs);
+    }
+    traverse(node);
+}
 
 bool
 DrawInstanced::install(osg::StateSet* stateset)
@@ -245,8 +226,6 @@ DrawInstanced::install(osg::StateSet* stateset)
     
     osgEarth::Shaders pkg;
     pkg.load( vp, pkg.InstancingVertex );
-
-    stateset->getOrCreateUniform("oe_di_postex_TBO", osg::Uniform::SAMPLER_BUFFER)->set(POSTEX_TBO_UNIT);
 
     return true;
 }
@@ -264,8 +243,6 @@ DrawInstanced::remove(osg::StateSet* stateset)
 
     Shaders pkg;
     pkg.unload( vp, pkg.InstancingVertex );
-
-    stateset->removeUniform("oe_di_postex_TBO");
 }
 
 
@@ -278,7 +255,7 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
     // place a static bounding sphere on the graph since we intend to alter
     // the structure of the subgraph.
     const osg::BoundingSphere& bs = parent->getBound();
-    parent->setComputeBoundingSphereCallback( new StaticBound(bs) );
+    parent->setInitialBound(bs);
     parent->dirtyBound();
 
     ModelInstanceMap models;
@@ -319,8 +296,9 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
 	int maxTBOSize = Registry::capabilities().getMaxTextureBufferSize();
 	// This is the total number of instances it can store
 	// We will iterate below. If the number of instances is larger than the buffer can store
-	// we make more tbos
-	int maxTBOInstancesSize = maxTBOSize/4;// 4 vec4s per matrix.
+    // we make more tbos
+    int matrixSize = 4 * 4 * sizeof(float); // 4 vec4's.
+    int maxTBOInstancesSize = maxTBOSize / matrixSize;
 
     // For each model:
     for( ModelInstanceMap::iterator i = models.begin(); i != models.end(); ++i )
@@ -351,7 +329,7 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
 
 		if (instances.size()<maxTBOInstancesSize)
 		{
-			tboSize = nextPowerOf2(instances.size());
+			tboSize = instances.size();
 			numInstancesToStore = instances.size();
 		}
 		else
@@ -361,12 +339,6 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
 			tboSize = maxTBOInstancesSize;
 			numInstancesToStore = maxTBOInstancesSize;
 		}
-		
-        // Convert the node's primitive sets to use "draw-instanced" rendering; at the
-        // same time, assign our computed bounding box as the static bounds for all
-        // geometries. (As DI's they cannot report bounds naturally.)
-        ConvertToDrawInstanced cdi(numInstancesToStore, bbox, true);
-        node->accept( cdi );
 		
         // Assign matrix vectors to the node, so the application can easily retrieve
         // the original position data if necessary.
@@ -412,19 +384,28 @@ DrawInstanced::convertGraphToUseDrawInstanced( osg::Group* parent )
 			nodeMats->push_back(mat);
 		}
 
+        // so the TBO will serialize properly.
+        image->setWriteHint(osg::Image::STORE_INLINE);
+
+        // Constuct the TBO:
         osg::TextureBuffer* posTBO = new osg::TextureBuffer;
 		posTBO->setImage(image);
         posTBO->setInternalFormat( GL_RGBA32F_ARB );
         posTBO->setUnRefImageDataAfterApply( true );
 
-        // so the TBO will serialize properly.
-        image->setWriteHint(osg::Image::STORE_INLINE);
-
-        // Tell the SG to skip the positioning texture.
-        ShaderGenerator::setIgnoreHint(posTBO, true);
-
+        // Convert the node's primitive sets to use "draw-instanced" rendering; at the
+        // same time, assign our computed bounding box as the static bounds for all
+        // geometries. (As DI's they cannot report bounds naturally.)
+        ConvertToDrawInstanced cdi(numInstancesToStore, bbox, true, posTBO, 0);
+        node->accept( cdi );
+        
+        // Bind the TBO sampler:
         osg::StateSet* stateset = instanceGroup->getOrCreateStateSet();
-        stateset->setTextureAttribute(POSTEX_TBO_UNIT, posTBO);
+        stateset->setTextureAttribute(cdi.getTextureImageUnit(), posTBO);
+        stateset->getOrCreateUniform("oe_di_postex_TBO", osg::Uniform::SAMPLER_BUFFER)->set(cdi.getTextureImageUnit());
+
+        // Tell the SG to skip the positioning TBO.
+        ShaderGenerator::setIgnoreHint(posTBO, true);
 
 		// add the node as a child:
         instanceGroup->addChild( node );

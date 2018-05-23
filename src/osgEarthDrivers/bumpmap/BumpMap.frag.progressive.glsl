@@ -1,10 +1,20 @@
 #version $GLSL_VERSION_STR
+$GLSL_DEFAULT_PRECISION_FLOAT
 
 #pragma vp_entryPoint oe_bumpmap_fragment
 #pragma vp_location   fragment_coloring
 #pragma vp_order      0.3
 
 #pragma include BumpMap.frag.common.glsl
+
+#pragma import_defines(OE_IS_DEPTH_CAMERA, OE_IS_PICK_CAMERA)
+
+#if defined(OE_IS_DEPTH_CAMERA) || defined(OE_IS_PICK_CAMERA)
+
+//nop
+void oe_bumpmap_fragment(inout vec4 color) { }
+
+#else
 
 uniform sampler2D oe_bumpmap_tex;
 uniform float     oe_bumpmap_intensity;
@@ -42,7 +52,7 @@ void oe_bumpmap_fragment(inout vec4 color)
         float fadeIn = 1.0;
         if ( range <= limit && limit < oe_bumpmap_maxRange )
             fadeIn = clamp((lastRange-limit)/(lastRange-range), 0.0, 1.0);
-        bump += (texture2D(oe_bumpmap_tex, oe_bumpmap_coords*scale).xyz*2.0-1.0)*amplitude*fadeIn;
+        bump += (texture(oe_bumpmap_tex, oe_bumpmap_coords*scale).xyz*2.0-1.0)*amplitude*fadeIn;
         if ( range <= limit )
             break;
         lastRange = range;
@@ -58,3 +68,5 @@ void oe_bumpmap_fragment(inout vec4 color)
 	// permute the normal with the bump.
 	vp_Normal = normalize(vp_Normal + bump*oe_bumpmap_intensity*slope);
 }
+
+#endif

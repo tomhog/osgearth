@@ -26,6 +26,7 @@
 #include <osgEarth/ShaderUtils>
 #include <osgEarth/Extension>
 #include <osgEarth/MapNode>
+#include <osgEarth/GLUtils>
 #include <osgDB/ReadFile>
 
 using namespace osgEarth;
@@ -58,9 +59,7 @@ SkyNode::baseInit(const SkyOptions& options)
     _moonVisible = true;
     _starsVisible = true;
     _atmosphereVisible = true;
-    _minimumAmbient.set(0.0f, 0.0f, 0.0f, 0.0f);
-
-    _lightingUniformsHelper = new UpdateLightingUniformsHelper();
+    //_minimumAmbient.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     setLighting( osg::StateAttribute::ON );
 
@@ -70,6 +69,8 @@ SkyNode::baseInit(const SkyOptions& options)
         _dateTime = DateTime(_dateTime.year(), _dateTime.month(), _dateTime.day(), (double)hours);
         // (don't call setDateTime since we are called from the CTOR)
     }
+
+    this->getOrCreateStateSet()->setDefine("OE_NUM_LIGHTS", "1");
 }
 
 void
@@ -105,10 +106,11 @@ void
 SkyNode::setLighting(osg::StateAttribute::OverrideValue value)
 {
     _lightingValue = value;
-    _lightingUniform = Registry::shaderFactory()->createUniformForGLMode(
-        GL_LIGHTING, value );
 
-    this->getOrCreateStateSet()->addUniform( _lightingUniform.get(), value );
+    if (value & osg::StateAttribute::INHERIT)
+        GLUtils::remove(this->getStateSet(), GL_LIGHTING);
+    else
+        GLUtils::setLighting(this->getOrCreateStateSet(), value);
 }
 
 void
@@ -137,27 +139,6 @@ SkyNode::setAtmosphereVisible(bool value)
 {
     _atmosphereVisible = value;
     onSetAtmosphereVisible();
-}
-
-void
-SkyNode::setMinimumAmbient(const osg::Vec4f& value)
-{
-    _minimumAmbient = value;
-    onSetMinimumAmbient();
-}
-
-void
-SkyNode::traverse(osg::NodeVisitor& nv)
-{
-    if ( nv.getVisitorType() == nv.CULL_VISITOR )
-    {
-        // update the light model uniforms.
-        if ( _lightingUniformsHelper.valid() )
-        {
-            _lightingUniformsHelper->cullTraverse( this, &nv );
-        }
-    }
-    osg::Group::traverse(nv);
 }
 
 //------------------------------------------------------------------------

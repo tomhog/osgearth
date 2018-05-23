@@ -18,7 +18,7 @@
  */
 #include <osgEarthFeatures/PolygonizeLines>
 #include <osgEarthFeatures/FeatureSourceIndexNode>
-#include <osgEarthFeatures/Session>
+#include <osgEarthFeatures/FilterContext>
 #include <osgEarthSymbology/MeshConsolidator>
 #include <osgEarth/VirtualProgram>
 #include <osgEarth/Utils>
@@ -126,9 +126,10 @@ _stroke( stroke )
 
 
 osg::Geometry*
-PolygonizeLinesOperator::operator()(osg::Vec3Array* verts, 
-                                    osg::Vec3Array* normals,
-                                    bool            twosided) const
+PolygonizeLinesOperator::operator()(osg::Vec3Array*  verts, 
+                                    osg::Vec3Array*  normals,
+                                    Callback*        callback,
+                                    bool             twosided) const
 {
     // number of verts on the original line.
     unsigned lineSize = verts->size();
@@ -155,11 +156,17 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
     // Set up the normals array
     if ( !normals )
     {
-        normals = new osg::Vec3Array(verts->size());
+        normals = new osg::Vec3Array(osg::Array::BIND_PER_VERTEX, verts->size());
         normals->assign( normals->size(), osg::Vec3(0,0,1) );
     }
     geom->setNormalArray( normals );
-    geom->setNormalBinding( osg::Geometry::BIND_PER_VERTEX );
+
+    // run the callback on the initial spine.
+    if (callback)
+    {
+        for (unsigned i = 0; i<verts->size(); ++i)
+            (*callback)(i);
+    }
 
     // Set up the buffering vector attribute array.
     osg::Vec3Array* spine = 0L;
@@ -167,8 +174,6 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
     {
         spine = new osg::Vec3Array( *verts );
         geom->setVertexAttribArray    ( ATTR_LOCATION, spine );
-        geom->setVertexAttribBinding  ( ATTR_LOCATION, osg::Geometry::BIND_PER_VERTEX );
-        geom->setVertexAttribNormalize( ATTR_LOCATION, false );
     }
 
     // initialize the texture coordinates.
@@ -207,6 +212,7 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
     for( int ss=firstside; ss<=lastside; ++ss )
     {
         float side = ss == 0 ? RIGHT_SIDE : LEFT_SIDE;
+        float tx = side == RIGHT_SIDE? 1.0f : 0.0f;
 
         // iterate over each line segment.
         for( i=0; i<lineSize-1; ++i )
@@ -240,13 +246,16 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
                 // first tex coord:
                 // TODO: revisit. I believe we have them going x = [-1..1] instead of [0..1] -gw
-                tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                //tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
 
                 // first normal
                 normals->push_back( (*normals)[i] );
 
                 // buffering vector.
                 if ( spine ) spine->push_back( (*verts)[i] );
+
+                if (callback) (*callback)(i);
 
                 // render the front end-cap.
                 if ( _stroke.lineCap() == Stroke::LINECAP_ROUND )
@@ -265,9 +274,10 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
                         verts->push_back( (*verts)[i] + v );
                         addTri( ebo, i, verts->size()-2, verts->size()-1, side );
-                        tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                        tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                         normals->push_back( (*normals)[i] );
                         if ( spine ) spine->push_back( (*verts)[i] );
+                        if (callback) (*callback)(i);
                     }
                 }
                 else if ( _stroke.lineCap() == Stroke::LINECAP_SQUARE )
@@ -276,15 +286,17 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
                     verts->push_back( verts->back() - dir*halfWidth );
                     addTri( ebo, i, verts->size()-2, verts->size()-1, side );
-                    tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                    tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                     normals->push_back( normals->back() );
                     if ( spine ) spine->push_back( (*verts)[i] );
+                    if (callback) (*callback)(i);
 
                     verts->push_back( (*verts)[i] - dir*halfWidth );
                     addTri( ebo, i, verts->size()-2, verts->size()-1, side );
-                    tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                    tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                     normals->push_back( (*normals)[i] );
                     if ( spine ) spine->push_back( (verts->back() - (*verts)[i]) * sqrt(2.0f) );
+                    if (callback) (*callback)(i);
                 }
             }
             else
@@ -336,10 +348,11 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
                     // for *previous* segment.
                     //if ( addedVertex )
                     addTris( ebo, i, prevBufVertPtr, verts->size()-1, side );
-                    tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                    tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                     normals->push_back( (*normals)[i] );
 
                     if ( spine ) spine->push_back( (*verts)[i] );
+                    if (callback) (*callback)(i);
                 }
 
                 else if ( _stroke.lineJoin() == Stroke::LINEJOIN_ROUND )
@@ -349,9 +362,10 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
                     verts->push_back( start );
                     addTris( ebo, i, prevBufVertPtr, verts->size()-1, side );
-                    tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                    tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                     normals->push_back( (*normals)[i] );
                     if ( spine ) spine->push_back( (*verts)[i] );
+                    if (callback) (*callback)(i);
 
                     // insert the edge-rounding points:
                     float angle = acosf( (prevBufVec * bufVec)/(halfWidth*halfWidth) );
@@ -367,10 +381,11 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
                         verts->push_back( (*verts)[i] + v );
                         addTri( ebo, i, verts->size()-1, verts->size()-2, side );
-                        tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                        tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                         normals->push_back( (*normals)[i] );
 
                         if ( spine ) spine->push_back( (*verts)[i] );
+                        if (callback) (*callback)(i);
                     }
                 }
 
@@ -387,9 +402,10 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
         // record the final point data.
         verts->push_back( (*verts)[i] + prevBufVec );
         addTris( ebo, i, prevBufVertPtr, verts->size()-1, side );
-        tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+        tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
         normals->push_back( (*normals)[i] );
         if ( spine ) spine->push_back( (*verts)[i] );
+        if (callback) (*callback)(i);
 
         if ( _stroke.lineCap() == Stroke::LINECAP_ROUND )
         {
@@ -407,9 +423,10 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
                 rotate( circlevec, (side)*a, up, v );
                 verts->push_back( (*verts)[i] + v );
                 addTri( ebo, i, verts->size()-1, verts->size()-2, side );
-                tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+                tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
                 normals->push_back( (*normals)[i] );
                 if ( spine ) spine->push_back( (*verts)[i] );
+                if (callback) (*callback)(i);
             }
         }
         else if ( _stroke.lineCap() == Stroke::LINECAP_SQUARE )
@@ -418,15 +435,17 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
             verts->push_back( verts->back() + prevDir*halfWidth );
             addTri( ebo, i, verts->size()-1, verts->size()-2, side );
-            tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
+            tverts->push_back( osg::Vec2f(tx, (*tverts)[i].y()) );
             normals->push_back( normals->back() );
             if ( spine ) spine->push_back( (*verts)[i] );
+            if (callback) (*callback)(i);
 
             verts->push_back( (*verts)[i] + prevDir*halfWidth );
             addTri( ebo, i, verts->size()-1, verts->size()-2, side );
             tverts->push_back( osg::Vec2f(1.0*side, (*tverts)[i].y()) );
             normals->push_back( (*normals)[i] );
             if ( spine ) spine->push_back( (*verts)[i] );
+            if (callback) (*callback)(i);
         }
     }
 
@@ -443,20 +462,10 @@ PolygonizeLinesOperator::operator()(osg::Vec3Array* verts,
 
     // generate colors
     {
-        osg::Vec4Array* colors = new osg::Vec4Array( verts->size() );
+        osg::Vec4Array* colors = new osg::Vec4Array( osg::Array::BIND_PER_VERTEX, verts->size() );
         colors->assign( colors->size(), _stroke.color() );
         geom->setColorArray( colors );
-        geom->setColorBinding( osg::Geometry::BIND_PER_VERTEX );
     }
-     
-#if 0
-    //TESTING
-    osg::Image* image = osgDB::readImageFile("E:/data/textures/road.jpg");
-    osg::Texture2D* tex = new osg::Texture2D(image);
-    tex->setWrap( osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE );
-    tex->setWrap( osg::Texture::WRAP_T, osg::Texture::REPEAT );
-    geom->getOrCreateStateSet()->setTextureAttributeAndModes(0, tex, 1);
-#endif
 
     return geom;
 }
@@ -542,7 +551,7 @@ PolygonizeLinesOperator::installShaders(osg::Node* node) const
     const char* vs =
         "#version " GLSL_VERSION_STR "\n"
         GLSL_DEFAULT_PRECISION_FLOAT "\n"
-        "attribute vec3 oe_polyline_center; \n"
+        "in vec3 oe_polyline_center; \n"
         "uniform float oe_polyline_scale;  \n"
         "uniform float oe_polyline_min_pixels; \n"
         "uniform vec4 oe_PixelSizeVector; \n"

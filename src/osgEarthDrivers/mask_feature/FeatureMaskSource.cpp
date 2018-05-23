@@ -20,8 +20,11 @@
 #include <osgEarth/MaskSource>
 #include <osgEarth/Registry>
 #include <osgEarth/Map>
+
 #include <osgEarthFeatures/TransformFilter>
 #include <osgEarthFeatures/FeatureSource>
+#include <osgEarthFeatures/FilterContext>
+#include <osgEarthFeatures/FeatureCursor>
 
 #include <osgDB/FileNameUtils>
 #include <OpenThreads/Mutex>
@@ -90,7 +93,7 @@ public:
                     Feature* f = cursor->nextFeature();
                     if ( f && f->getGeometry() )
                     {
-                        // Init a filter to tranform feature in desired SRS 
+                        // Init a filter to transform feature in desired SRS 
                         if (!srs->isEquivalentTo(_features->getFeatureProfile()->getSRS()))
                         {
                             FilterContext cx;

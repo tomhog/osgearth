@@ -85,6 +85,7 @@ SkinResource::getConfig() const
     Config conf = Resource::getConfig();
     conf.key() = "skin";
 
+<<<<<<< HEAD
     conf.updateIfSet( "url",                 _imageURI );
     conf.updateIfSet( "image_width",         _imageWidth );
     conf.updateIfSet( "image_height",        _imageHeight );
@@ -98,16 +99,30 @@ SkinResource::getConfig() const
     conf.updateIfSet( "texture_mode", "modulate", _texEnvMode, osg::TexEnv::MODULATE );
     conf.updateIfSet( "texture_mode", "replace",  _texEnvMode, osg::TexEnv::REPLACE );
     conf.updateIfSet( "texture_mode", "blend",    _texEnvMode, osg::TexEnv::BLEND );
+=======
+    conf.set( "url",                 _imageURI );
+    conf.set( "image_width",         _imageWidth );
+    conf.set( "image_height",        _imageHeight );
+    conf.set( "min_object_height",   _minObjHeight );
+    conf.set( "max_object_height",   _maxObjHeight );
+    conf.set( "tiled",               _isTiled );
+    conf.set( "max_texture_span",    _maxTexSpan );
+    
+    conf.set( "texture_mode", "decal",    _texEnvMode, osg::TexEnv::DECAL );
+    conf.set( "texture_mode", "modulate", _texEnvMode, osg::TexEnv::MODULATE );
+    conf.set( "texture_mode", "replace",  _texEnvMode, osg::TexEnv::REPLACE );
+    conf.set( "texture_mode", "blend",    _texEnvMode, osg::TexEnv::BLEND );
+>>>>>>> master
 
     // texture atlas support
-    conf.updateIfSet( "image_bias_s",        _imageBiasS );
-    conf.updateIfSet( "image_bias_t",        _imageBiasT );
-    conf.updateIfSet( "image_layer",         _imageLayer );
-    conf.updateIfSet( "image_scale_s",       _imageScaleS );
-    conf.updateIfSet( "image_scale_t",       _imageScaleT );
+    conf.set( "image_bias_s",        _imageBiasS );
+    conf.set( "image_bias_t",        _imageBiasT );
+    conf.set( "image_layer",         _imageLayer );
+    conf.set( "image_scale_s",       _imageScaleS );
+    conf.set( "image_scale_t",       _imageScaleT );
     
-    conf.updateIfSet( "atlas", _atlasHint );
-    conf.updateIfSet( "read_options", _readOptions );
+    conf.set( "atlas", _atlasHint );
+    conf.set( "read_options", _readOptions );
 
     return conf;
 }
@@ -173,6 +188,8 @@ SkinResource::createTexture(osg::Image* image) const
 
     // don't resize them, let it be
     tex->setResizeNonPowerOfTwoHint(false);
+
+    ImageUtils::activateMipMaps(tex);
 
     return tex;
 }
@@ -268,6 +285,9 @@ SkinResource::add2StateSet(osg::ref_ptr<osg::StateSet>& output, osg::Image* imag
 osg::ref_ptr<osg::Image>
 SkinResource::createImage( const osgDB::Options* dbOptions ) const
 {
+    if (getStatus().isError())
+        return 0L;
+
     ReadResult result;
     if (_readOptions.isSet())
     {
@@ -278,6 +298,13 @@ SkinResource::createImage( const osgDB::Options* dbOptions ) const
     else
     {
         result = _imageURI->readImage(dbOptions);
+    }
+
+    if (result.failed())
+    {
+        Threading::ScopedMutexLock lock(_mutex);
+        if (_status.isOK())
+            _status = Status::Error(Status::ServiceUnavailable, "Failed to load resource image\n");
     }
     return result.releaseImage();
 }

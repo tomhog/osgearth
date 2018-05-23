@@ -17,7 +17,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include <osgEarthFeatures/FeatureTileSource>
+#include <osgEarthFeatures/Filter>
+#include <osgEarthFeatures/FeatureCursor>
+
 #include <osgEarth/Registry>
+
 #include <osgDB/WriteFile>
 #include <osg/Notify>
 
@@ -41,8 +45,8 @@ FeatureTileSourceOptions::getConfig() const
 {
     Config conf = TileSourceOptions::getConfig();
 
-    conf.updateObjIfSet( "features", _featureOptions );
-    conf.updateObjIfSet( "styles", _styles );
+    conf.setObj( "features", _featureOptions );
+    conf.setObj( "styles", _styles );
 
     if ( _geomTypeOverride.isSet() ) {
         if ( _geomTypeOverride == Geometry::TYPE_LINESTRING )
@@ -161,7 +165,7 @@ FeatureTileSource::createImage( const TileKey& key, ProgressCallback* progress )
         return 0L;
 
     // style data
-    const StyleSheet* styles = _options.styles();
+    const StyleSheet* styles = _options.styles().get();
 
     // implementation-specific data
     osg::ref_ptr<osg::Referenced> buildData = createBuildData();
@@ -234,7 +238,7 @@ FeatureTileSource::createImage( const TileKey& key, ProgressCallback* progress )
                                 Style combinedStyle;
 
                                 // if the style string begins with an open bracket, it's an inline style definition.
-                                if ( styleString.length() > 0 && styleString.at(0) == '{' )
+                                if ( styleString.length() > 0 && styleString[0] == '{' )
                                 {
                                     Config conf( "style", styleString );
                                     conf.setReferrer( sel.styleExpression().get().uriContext().referrer() );

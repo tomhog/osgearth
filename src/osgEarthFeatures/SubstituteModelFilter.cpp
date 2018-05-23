@@ -18,10 +18,12 @@
  */
 #include <osgEarthFeatures/SubstituteModelFilter>
 #include <osgEarthFeatures/FeatureSourceIndexNode>
-#include <osgEarthFeatures/Session>
+#include <osgEarthFeatures/FilterContext>
 #include <osgEarthFeatures/GeometryUtils>
-#include <osgEarthSymbology/MeshConsolidator>
+
 #include <osgEarthSymbology/MeshFlattener>
+#include <osgEarthSymbology/StyleSheet>
+
 #include <osgEarth/ECEF>
 #include <osgEarth/VirtualProgram>
 #include <osgEarth/DrawInstanced>
@@ -29,14 +31,13 @@
 #include <osgEarth/Capabilities>
 #include <osgEarth/ScreenSpaceLayout>
 #include <osgEarth/CullingUtils>
+#include <osgEarth/NodeUtils>
 
 #include <osg/AutoTransform>
 #include <osg/Drawable>
 #include <osg/Geode>
 #include <osg/MatrixTransform>
 #include <osg/NodeVisitor>
-#include <osg/ShapeDrawable>
-#include <osg/AlphaFunc>
 #include <osg/Billboard>
 
 #include <osgSim/LightPointNode>
@@ -53,6 +54,10 @@
 #include <deque>
 
 #define LC "[SubstituteModelFilter] "
+
+#ifndef GL_CLIP_DISTANCE0
+#define GL_CLIP_DISTANCE0 0x3000
+#endif
 
 using namespace osgEarth;
 using namespace osgEarth::Features;
@@ -575,8 +580,11 @@ SubstituteModelFilter::process(const FeatureList&           features,
         // activate horizon culling if we are in geocentric space
         if ( context.getSession() && context.getSession()->getMapInfo().isGeocentric() )
         {
-            //TODO: re-evaluate this; use Horizon?
-            HorizonCullingProgram::install( attachPoint->getOrCreateStateSet() );
+            // should this use clipping, or a horizon cull callback?
+
+            //HorizonCullingProgram::install( attachPoint->getOrCreateStateSet() );
+
+            attachPoint->getOrCreateStateSet()->setMode(GL_CLIP_DISTANCE0, 1);
         }
     }
 
@@ -611,7 +619,7 @@ namespace
         osg::ref_ptr< osg::Node > clone = (osg::Node*)node->clone(osg::CopyOp::DEEP_COPY_NODES);
        
         // Now remove any geodes
-        FindNodesVisitor<osg::Geode> findGeodes;
+        osgEarth::FindNodesVisitor<osg::Geode> findGeodes;
         clone->accept(findGeodes);
         for (unsigned int i = 0; i < findGeodes._results.size(); i++)
         {
@@ -661,13 +669,6 @@ SubstituteModelFilter::push(FeatureList& features, FilterContext& context)
 
     osg::ref_ptr<const InstanceSymbol> symbol = _style.get<InstanceSymbol>();
 
-    // check for deprecated MarkerSymbol type.
-    if ( !symbol.valid() )
-    {
-        if ( _style.has<MarkerSymbol>() )
-            symbol = _style.get<MarkerSymbol>()->convertToInstanceSymbol();
-    }
-
     if ( !symbol.valid() )
     {
         OE_WARN << LC << "No appropriate symbol found in stylesheet; aborting." << std::endl;
@@ -706,14 +707,14 @@ SubstituteModelFilter::push(FeatureList& features, FilterContext& context)
     // Process the feature set, using clustering if requested
     bool ok = true;
 
-    process( features, symbol, context.getSession(), attachPoint.get(), newContext );
+    process( features, symbol.get(), context.getSession(), attachPoint.get(), newContext );
     if (_cluster)
     {
         // Extract the unclusterable things
-        osg::ref_ptr< osg::Node > unclusterables = extractUnclusterables(attachPoint);
+        osg::ref_ptr< osg::Node > unclusterables = extractUnclusterables(attachPoint.get());
 
         // We run on the attachPoint instead of the main group so that we don't lose the double precision declocalizer transform.
-        MeshFlattener::run(attachPoint);
+        MeshFlattener::run(attachPoint.get());
 
         // Add the unclusterables back to the attach point after the rest of the graph was flattened.
         if (unclusterables.valid())
@@ -724,24 +725,6 @@ SubstituteModelFilter::push(FeatureList& features, FilterContext& context)
 
     // return proper context
     context = newContext;
-
-#if 0
-    // TODO: OBE due to shader pipeline
-    // see if we need normalized normals
-    if ( _normalScalingRequired )
-    {
-        // TODO: carefully test for this, since GL_NORMALIZE hurts performance in 
-        // FFP mode (RESCALE_NORMAL is faster for uniform scaling); and I think auto-normal-scaling
-        // is disabled entirely when using shaders. For now I believe we are dropping to FFP
-        // when not using instancing ...so just check for that
-        if ( !_useDrawInstanced )
-        {
-            group->getOrCreateStateSet()->setMode( GL_NORMALIZE, osg::StateAttribute::ON );
-        }
-    }
-#endif
-
-    //osgDB::writeNodeFile(*group, "c:/temp/clustered.osg");
 
     return group;
 }

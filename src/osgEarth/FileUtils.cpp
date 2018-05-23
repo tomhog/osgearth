@@ -20,9 +20,11 @@
 #include <osgEarth/FileUtils>
 #include <osgEarth/StringUtils>
 #include <osgEarth/DateTime>
+#include <osgEarth/ThreadingUtils>
 #include <osgDB/FileUtils>
 #include <osgDB/FileNameUtils>
 #include <osgDB/Registry>
+#include <osgDB/ConvertUTF>
 #include <osg/Notify>
 #include <stack>
 #include <errno.h>
@@ -128,6 +130,27 @@
 
 using namespace osgEarth;
 
+namespace osgEarth
+{
+#ifdef OSG_USE_UTF8_FILENAME
+#define OSGDB_STRING_TO_FILENAME(s) osgDB::convertUTF8toUTF16(s)
+#define OSGDB_FILENAME_TO_STRING(s) osgDB::convertUTF16toUTF8(s)
+#define OSGDB_FILENAME_TEXT(x) L ## x
+#define OSGDB_WINDOWS_FUNCT(x) x ## W
+#define OSGDB_WINDOWS_FUNCT_STRING(x) #x "W"
+    typedef wchar_t filenamechar;
+    typedef std::wstring filenamestring;
+#else
+#define OSGDB_STRING_TO_FILENAME(s) s
+#define OSGDB_FILENAME_TO_STRING(s) s
+#define OSGDB_FILENAME_TEXT(x) x
+#define OSGDB_WINDOWS_FUNCT(x) x ## A
+#define OSGDB_WINDOWS_FUNCT_STRING(x) #x "A"
+    typedef char filenamechar;
+    typedef std::string filenamestring;
+#endif
+}
+
 
 std::string
 osgEarth::getAbsolutePath(const std::string& path)
@@ -158,63 +181,99 @@ bool osgEarth::isRelativePath(const std::string& fileName)
 
 std::string osgEarth::getFullPath(const std::string& relativeTo, const std::string &relativePath)
 {
+    // A cache, since this method uses osgDB::getRealPath which can be quite slow.
+    static Threading::Mutex s_cacheMutex;
+    typedef std::map<std::string, std::string> PathCache;
+    static PathCache s_cache;
+    //static float tries = 0, hits = 0;
+
+    std::string cacheKey = relativeTo + "&" + relativePath;
+
+    Threading::ScopedMutexLock lock(s_cacheMutex);
+
+    //tries += 1.0f;
+
+    PathCache::const_iterator i = s_cache.find(cacheKey);
+    if (i != s_cache.end())
+    {
+        //hits += 1.0f;
+        //OE_INFO << "size=" << s_cache.size() <<  " tries=" << tries << " hits=" << (100.*hits/tries) << std::endl;
+        return i->second;
+    }
+
+    // prevent the cache from growing unbounded
+    if (s_cache.size() >= 20000)
+        s_cache.clear();
+
+    // result that will go into the cache:
+    std::string result;
+
 	if (!isRelativePath(relativePath) || relativeTo.empty())
     {
         //OE_NOTICE << relativePath << " is not a relative path " << std::endl;
-        return relativePath;
+        result = relativePath;
     }
 
     //If they didn't specify a relative path, just return the relativeTo
-    if (relativePath.empty()) return relativeTo;
+    else if (relativePath.empty())
+    {
+        result = relativeTo;
+    }
 
-
-    //Note:  Modified from VPB
-
-    //Concatinate the paths together
-    std::string filename;
-    if ( !osgDB::containsServerAddress( relativeTo ) )
-        filename = osgDB::concatPaths( osgDB::getFilePath( osgDB::getRealPath( relativeTo )), relativePath);
     else
-        filename = osgDB::concatPaths( osgDB::getFilePath( relativeTo ), relativePath);
-
-
-    std::list<std::string> directories;
-    int start = 0;
-    for (unsigned int i = 0; i < filename.size(); ++i)
     {
-        if (filename[i] == '\\' || filename[i] == '/')
+        //Note:  Modified from VPB
+
+        //Concatinate the paths together
+        std::string filename;
+        if ( !osgDB::containsServerAddress( relativeTo ) )
+            filename = osgDB::concatPaths( osgDB::getFilePath( osgDB::getRealPath( relativeTo )), relativePath);
+        else
+            filename = osgDB::concatPaths( osgDB::getFilePath( relativeTo ), relativePath);
+
+
+        std::list<std::string> directories;
+        int start = 0;
+        for (unsigned int i = 0; i < filename.size(); ++i)
         {
-            //Get the current directory
-            std::string dir = filename.substr(start, i-start);
-
-            if (dir != "..")
+            if (filename[i] == '\\' || filename[i] == '/')
             {
-                if (dir != ".")
+                //Get the current directory
+                std::string dir = filename.substr(start, i-start);
+
+                if (dir != "..")
                 {
-                  directories.push_back(dir);
+                    if (dir != ".")
+                    {
+                      directories.push_back(dir);
+                    }
                 }
+                else if (!directories.empty())
+                {
+                    directories.pop_back();
+                }
+                start = i + 1;
             }
-            else if (!directories.empty())
-            {
-                directories.pop_back();
-            }
-            start = i + 1;
         }
+
+        std::string path;
+        for (std::list<std::string>::iterator itr = directories.begin();
+             itr != directories.end();
+             ++itr)
+        {
+            path += *itr;
+            path += "/";
+        }
+
+        path += filename.substr(start, std::string::npos);
+
+        //OE_NOTICE << "FullPath " << path << std::endl;
+        result = path;
     }
 
-    std::string path;
-    for (std::list<std::string>::iterator itr = directories.begin();
-         itr != directories.end();
-         ++itr)
-    {
-        path += *itr;
-        path += "/";
-    }
-
-    path += filename.substr(start, std::string::npos);
-
-    //OE_NOTICE << "FullPath " << path << std::endl;
-    return path;
+    // cache the result and return it.
+    s_cache[cacheKey] = result;
+    return result;
 }
 
 bool
@@ -242,12 +301,6 @@ osgEarth::isPathToArchivedFile(const std::string& path)
         }
     }
     return false;
-}
-
-bool osgEarth::isZipPath(const std::string &path)
-{
-    OE_WARN << LC << "FileUtils::isZipPath is deprecated; use isPathToArchivedFile instead" << std::endl;
-    return (path.find(".zip") != std::string::npos);
 }
 
 std::string osgEarth::getTempPath()

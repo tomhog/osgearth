@@ -1,8 +1,9 @@
 
-SET(TARGET_COMMON_LIBRARIES ${TARGET_COMMON_LIBRARIES} osgEarthSymbology)
+SET(TARGET_COMMON_LIBRARIES ${TARGET_COMMON_LIBRARIES} osgEarthSymbology osgEarthUtil)
 
 set(TARGET_GLSL
     RexEngine.vert.glsl
+    RexEngine.elevation.glsl
     RexEngine.vert.view.glsl
     RexEngine.tcs.glsl
     RexEngine.tes.glsl
@@ -24,14 +25,18 @@ configure_shaders(
     ${TARGET_GLSL} )
 
 SET(TARGET_SRC
+    DrawState.cpp
+    DrawTileCommand.cpp
     GeometryPool.cpp
     RexTerrainEngineNode.cpp
     RexTerrainEngineDriver.cpp
+    LayerDrawable.cpp
     LoadTileData.cpp
     MaskGenerator.cpp
-    MPTexture.cpp
 	SelectionInfo.cpp
     SurfaceNode.cpp
+    TerrainCuller.cpp
+    TerrainRenderData.cpp
 	TileDrawable.cpp
     EngineContext.cpp
     TileNode.cpp
@@ -43,16 +48,21 @@ SET(TARGET_SRC
 
 SET(TARGET_H
     Common
+    DrawState
+    DrawTileCommand
     GeometryPool
     Shaders
     RexTerrainEngineNode
     RexTerrainEngineOptions
+    LayerDrawable
     LoadTileData
     MaskGenerator
-    MPTexture
     RenderBindings
     SurfaceNode
+    TerrainCuller
+    TerrainRenderData
 	TileDrawable
+    TileRenderModel
     EngineContext
     TileNode
     TileNodeRegistry

@@ -16,7 +16,6 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
-#include <Triton.h>
 #include "TritonContext"
 #include <osg/GLExtensions>
 #include <osg/Math>
@@ -44,20 +43,11 @@ _oceanWrapper         ( 0L )
 
 TritonContext::~TritonContext()
 {
-    if ( _oceanWrapper )
+    if (_oceanWrapper)
         delete _oceanWrapper;
 
-    if ( _environmentWrapper )
+    if (_environmentWrapper)
         delete _environmentWrapper;
-
-    if ( _ocean )
-        delete _ocean;
-
-    if ( _environment )
-        delete _environment;
-
-    if ( _resourceLoader )
-        delete _resourceLoader;
 }
 
 void
@@ -82,6 +72,12 @@ int
 TritonContext::getHeightMapSize() const
 {
     return osg::clampBetween(_options.heightMapSize().get(), 64, 2048);
+}
+
+const std::string&
+TritonContext::getMaskLayerName() const
+{
+    return _options.maskLayer().get();
 }
 
 void
@@ -130,12 +126,14 @@ TritonContext::initialize(osg::RenderInfo& renderInfo)
 
             float openGLVersion = osg::getGLVersionNumber();
             enum ::Triton::Renderer tritonOpenGlVersion = ::Triton::OPENGL_2_0;
-            if( openGLVersion == 4.1 )
+#ifndef OSG_GL_FIXED_FUNCTION_AVAILABLE
+            if( openGLVersion >= 4.1 )
                 tritonOpenGlVersion = ::Triton::OPENGL_4_1;
-            else if( openGLVersion == 4.0 )
+            else if( openGLVersion >= 4.0 )
                 tritonOpenGlVersion = ::Triton::OPENGL_4_0;
-            else if( openGLVersion == 3.2 )
+            else if( openGLVersion >= 3.2 )
                 tritonOpenGlVersion = ::Triton::OPENGL_3_2;
+#endif
 
             ::Triton::EnvironmentError err = _environment->Initialize(
                 cs,
@@ -181,5 +179,39 @@ TritonContext::update(double simTime)
     {
         // fmod requires b/c CUDA is limited to single-precision values
         _ocean->UpdateSimulation( fmod(simTime, 86400.0) );
+    }
+}
+
+void
+TritonContext::resizeGLObjectBuffers(unsigned maxSize)
+{
+    osg::Object::resizeGLObjectBuffers(maxSize);
+}
+
+void
+TritonContext::releaseGLObjects(osg::State* state) const
+{
+    osg::Object::releaseGLObjects(state);
+
+    OE_INFO << LC << "Triton shutting down - releasing GL resources\n";
+    if (state)
+    {
+        if ( _ocean )
+        {
+            delete _ocean;
+            _ocean = 0L;
+        }
+
+        if ( _environment )
+        {
+            delete _environment;
+            _environment = 0L;
+        }
+
+        if ( _resourceLoader )
+        {
+            delete _resourceLoader;
+            _resourceLoader = 0L;
+        }
     }
 }

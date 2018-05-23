@@ -50,6 +50,10 @@ using namespace osgEarth::ShaderComp;
 
 #define MAX_PROGRAM_CACHE_SIZE 128
 
+#define PREALLOCATE_APPLY_VARS 1
+
+#define MAX_CONTEXTS 16
+
 #define MAKE_SHADER_ID(X) osgEarth::hashString( X )
 
 //------------------------------------------------------------------------
@@ -85,7 +89,7 @@ namespace
 
 namespace
 {
-#ifdef OSG_GLES2_AVAILABLE
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
     // GLES requires all shader code be merged into a since source
     bool s_mergeShaders = true;
 #else
@@ -119,7 +123,7 @@ namespace
         std::stringstream buf;
         for( unsigned i=0; i<in.length(); ++i )
         {
-            char c = in.at(i);
+            char c = in[i];
             if ( ::isspace(c) )
             {
                 if ( !inwhite )
@@ -141,11 +145,19 @@ namespace
     }
 
 
-    void parseShaderForMerging( const std::string& source, unsigned& version, HeaderMap& headers, std::stringstream& body )
+    void parseShaderForMerging( const std::string& source, unsigned& version, std::string& subversion, HeaderMap& precisions, HeaderMap& headers, std::stringstream& body )
     {
+    
+        // types we consider declarations
+        std::string dectypesarray[] = {"void", "uniform", "in", "out", "varying", "bool", "int", "float", "vec2", "vec3", "vec4", "bvec2", "bvec3", "bvec4", "ivec2", "ivec3", "ivec4", "mat2", "mat3", "mat4", "sampler2D", "samplerCube", "lowp", "mediump", "highp", "struct", "attribute", "#extension", "#define"};
+        std::vector<std::string> dectypes (dectypesarray, dectypesarray + sizeof(dectypesarray) / sizeof(dectypesarray[0]) );
+        
         // break into lines:
         StringVector lines;
         StringTokenizer( source, lines, "\n", "", true, false );
+
+        // keep track of brackets and if we're in global scope indent==0
+        int indent = 0;
 
         for( StringVector::const_iterator line_iter = lines.begin(); line_iter != lines.end(); ++line_iter )
         {
@@ -155,6 +167,16 @@ namespace
             {
                 StringVector tokens;
                 StringTokenizer( line, tokens, " \t", "", false, true );
+                
+                indent += std::count(line.begin(), line.end(), '{');
+                indent -= std::count(line.begin(), line.end(), '}');
+                
+                // we say it's a declaration if it starts with one of the dectyps, has a ; at the end and is in the global scope
+                bool isdec = (std::find(dectypes.begin(), dectypes.end(), tokens[0]) != dectypes.end() && line[line.size()-1] == ';' && indent == 0) || (tokens[0] == "#extension" || tokens[0] == "#define");
+                
+                // discard forward declarations of functions, we know it's a declaration so just see if it has brackets (should be safe)
+                bool isfunc = isdec && (line.find("(") != std::string::npos && line.find(")") != std::string::npos);
+                if(isfunc) continue;
 
                 if (tokens[0] == "#version")
                 {
@@ -165,18 +187,33 @@ namespace
                         if ( newVersion > version )
                         {
                             version = newVersion;
+                            if(tokens.size() > 2)
+                            {
+                                subversion = tokens[2];
+                            }
                         }
                     }
                 }
+                
+                else if(tokens[0] == "precision") {
+                    // precision stored in map of value type to current highest value precision
+                    // dec should be keyword valueprecision type, precision highp float
+                    if(tokens.size() < 3) continue;
+                    std::string& currentlevel = precisions[tokens[2]];
+                    
+                    // see if it's higher
+                    if(currentlevel.empty() || (currentlevel == "lowp" && (tokens[1] == "mediump" || tokens[1] == "highp"))) currentlevel = tokens[1];
+                    if(currentlevel == "mediump" && tokens[1] == "highp") currentlevel = tokens[1];
+                }
 
-                else if (
-                    tokens[0] == "#extension"   ||
+                else if (isdec
+                    /*tokens[0] == "#extension"   ||
                     tokens[0] == "#define"      ||
                     tokens[0] == "precision"    ||
                     tokens[0] == "struct"       ||
                     tokens[0] == "varying"      ||
                     tokens[0] == "uniform"      ||
-                    tokens[0] == "attribute")
+                    tokens[0] == "attribute"*/)
                 {
                     std::string& header = headers[line];
                     header = line;
@@ -188,6 +225,12 @@ namespace
                 }
             }
         }
+        
+#if defined(OSG_GLES3_AVAILABLE)
+        // just force gles 3 to use correct version number as shaders in earth files might include a version
+        version = 300;
+        subversion = "es";
+#endif
     }
 
 
@@ -266,7 +309,7 @@ namespace
     }
 
     struct SortByType {
-        bool operator()(osg::Shader* lhs, osg::Shader* rhs) {
+        bool operator()(const osg::ref_ptr<osg::Shader>& lhs, const osg::ref_ptr<osg::Shader>& rhs) {
             return (int)lhs->getType() < (int)rhs->getType();
         }
     };
@@ -310,10 +353,14 @@ namespace
         if ( s_mergeShaders )
         {
             unsigned          vertVersion = 0;
+            std::string       vertSubversion = "";
+            HeaderMap         vertPrecisions;
             HeaderMap         vertHeaders;
             std::stringstream vertBody;
 
             unsigned          fragVersion = 0;
+            std::string       fragSubversion = "";
+            HeaderMap         fragPrecisions;
             HeaderMap         fragHeaders;
             std::stringstream fragBody;
 
@@ -325,11 +372,11 @@ namespace
                 {
                     if ( s->getType() == osg::Shader::VERTEX )
                     {
-                        parseShaderForMerging( s->getShaderSource(), vertVersion, vertHeaders, vertBody );
+                        parseShaderForMerging( s->getShaderSource(), vertVersion, vertSubversion, vertPrecisions, vertHeaders, vertBody );
                     }
                     else if ( s->getType() == osg::Shader::FRAGMENT )
                     {
-                        parseShaderForMerging( s->getShaderSource(), fragVersion, fragHeaders, fragBody );
+                        parseShaderForMerging( s->getShaderSource(), fragVersion, fragSubversion, fragPrecisions, fragHeaders, fragBody );
                     }
                 }
             }
@@ -338,30 +385,60 @@ namespace
             std::string vertBodyText;
             vertBodyText = vertBody.str();
             std::stringstream vertShaderBuf;
-            if ( vertVersion > 0 )
-                vertShaderBuf << "#version " << vertVersion << "\n";
+            if ( vertVersion > 0 ) {
+                vertShaderBuf << "#version " << vertVersion;
+                if(vertSubversion.size() > 0)
+                   vertShaderBuf << " " << vertSubversion;
+                vertShaderBuf << "\n";
+            }
+
+            if(vertPrecisions.size() > 0) {
+                for(HeaderMap::iterator pitr = vertPrecisions.begin(); pitr != vertPrecisions.end(); ++pitr) {
+                    vertShaderBuf << "precision " << pitr->second << " " << pitr->first << "\n";
+                }
+            }
+
             for( HeaderMap::const_iterator h = vertHeaders.begin(); h != vertHeaders.end(); ++h )
                 vertShaderBuf << h->second << "\n";
             vertShaderBuf << vertBodyText << "\n";
             vertBodyText = vertShaderBuf.str();
 
+
+
             std::string fragBodyText;
             fragBodyText = fragBody.str();
             std::stringstream fragShaderBuf;
-            if ( fragVersion > 0 )
-                fragShaderBuf << "#version " << fragVersion << "\n";
+            if ( fragVersion > 0 ) {
+                fragShaderBuf << "#version " << fragVersion;
+                if(fragSubversion.size() > 0)
+                    fragShaderBuf << " " << fragSubversion;
+                fragShaderBuf << "\n";
+            }
+
+#if defined(OSG_GLES3_AVAILABLE)
+            // ensure there's a default for floats in the frag shader
+            std::string& defaultFragFloat = fragPrecisions["float;"];
+            if(defaultFragFloat.size() == 0) defaultFragFloat = "highp";
+#endif
+            if(fragPrecisions.size() > 0) {
+                for(HeaderMap::iterator pitr = fragPrecisions.begin(); pitr != fragPrecisions.end(); ++pitr) {
+                    fragShaderBuf << "precision " << pitr->second << " " << pitr->first << "\n";
+                }
+            }
+
             for( HeaderMap::const_iterator h = fragHeaders.begin(); h != fragHeaders.end(); ++h )
                 fragShaderBuf << h->second << "\n";
             fragShaderBuf << fragBodyText << "\n";
             fragBodyText = fragShaderBuf.str();
 
-            // add them to the program.            
+
+            // add them to the program.
             program->addShader( new osg::Shader(osg::Shader::VERTEX, vertBodyText) );
             program->addShader( new osg::Shader(osg::Shader::FRAGMENT, fragBodyText) );
 
             if ( s_dumpShaders )
             {
-                OE_NOTICE << LC 
+                OE_NOTICE << LC
                     << "\nMERGED VERTEX SHADER: \n\n" << vertBodyText << "\n\n"
                     << "MERGED FRAGMENT SHADER: \n\n" << fragBodyText << "\n" << std::endl;
             }
@@ -416,6 +493,7 @@ namespace
                                osg::State&                         state,
                                ShaderComp::FunctionLocationMap&    accumFunctions,
                                VirtualProgram::ShaderMap&          accumShaderMap,
+                               const VirtualProgram::ExtensionsSet& extensionsSet,
                                VirtualProgram::AttribBindingList&  accumAttribBindings,
                                VirtualProgram::AttribAliasMap&     accumAttribAliases,
                                osg::Program*                       templateProgram,
@@ -459,7 +537,7 @@ namespace
 
         // create new MAINs for this function stack.
         VirtualProgram::ShaderVector mains;
-        ShaderComp::StageMask stages = Registry::shaderFactory()->createMains( accumFunctions, accumShaderMap, mains );
+        ShaderComp::StageMask stages = Registry::shaderFactory()->createMains(accumFunctions, accumShaderMap, extensionsSet, mains);
 
         // build a new "key vector" now that we've changed the shader map.
         // we call is a key vector because it uniquely identifies this shader program
@@ -671,7 +749,8 @@ _inherit           ( true ),
 _inheritSet        ( false ),
 _logShaders        ( false ),
 _logPath           ( "" ),
-_acceptCallbacksVaryPerFrame( false )
+_acceptCallbacksVaryPerFrame( false ),
+_isAbstract        ( false )
 {
     // Note: we cannot set _active here. Wait until apply().
     // It will cause a conflict in the Registry.
@@ -691,6 +770,14 @@ _acceptCallbacksVaryPerFrame( false )
     // a template object to hold program data (so we don't have to dupliate all the 
     // osg::Program methods..)
     _template = new osg::Program();
+
+#ifdef PREALLOCATE_APPLY_VARS
+    _apply.resize(MAX_CONTEXTS);
+#endif
+
+#ifdef USE_STACK_MEMORY
+    _vpStackMemory._item.resize(MAX_CONTEXTS);
+#endif
 }
 
 
@@ -704,7 +791,8 @@ _inheritSet        ( rhs._inheritSet ),
 _logShaders        ( rhs._logShaders ),
 _logPath           ( rhs._logPath ),
 _template          ( osg::clone(rhs._template.get()) ),
-_acceptCallbacksVaryPerFrame( rhs._acceptCallbacksVaryPerFrame )
+_acceptCallbacksVaryPerFrame( rhs._acceptCallbacksVaryPerFrame ),
+_isAbstract        ( rhs._isAbstract )
 {    
     // Attribute bindings.
     const osg::Program::AttribBindingList &abl = rhs.getAttribBindingList();
@@ -712,6 +800,14 @@ _acceptCallbacksVaryPerFrame( rhs._acceptCallbacksVaryPerFrame )
     {
         addBindAttribLocation( attribute->first, attribute->second );
     }
+    
+#ifdef PREALLOCATE_APPLY_VARS
+    _apply.resize(MAX_CONTEXTS);
+#endif
+
+#ifdef USE_STACK_MEMORY
+    _vpStackMemory._item.resize(MAX_CONTEXTS);
+#endif
 }
 
 VirtualProgram::~VirtualProgram()
@@ -729,6 +825,7 @@ VirtualProgram::compare(const osg::StateAttribute& sa) const
     // compare each parameter in turn against the rhs.
     COMPARE_StateAttribute_Parameter(_mask);
     COMPARE_StateAttribute_Parameter(_inherit);
+    COMPARE_StateAttribute_Parameter(_isAbstract);
 
     // compare the shader maps. Need to lock them while comparing.
     {
@@ -813,6 +910,8 @@ VirtualProgram::compileGLObjects(osg::State& state) const
 void
 VirtualProgram::resizeGLObjectBuffers(unsigned maxSize)
 {
+    osg::StateAttribute::resizeGLObjectBuffers(maxSize);
+
     _programCacheMutex.lock();
 
     for (ProgramMap::iterator i = _programCache.begin(); i != _programCache.end(); ++i)
@@ -829,23 +928,27 @@ VirtualProgram::resizeGLObjectBuffers(unsigned maxSize)
         }
     }
 
-    // Resize the buffered_object
-    _apply.resize(maxSize);
-
-    _vpStackMemory._item.resize(maxSize);
-
     _programCacheMutex.unlock();
 }
 
 void
 VirtualProgram::releaseGLObjects(osg::State* state) const
 {
+    osg::StateAttribute::releaseGLObjects(state);
+
     _programCacheMutex.lock();
 
     for (ProgramMap::const_iterator i = _programCache.begin(); i != _programCache.end(); ++i)
     {
-        //if ( i->second->referenceCount() == 1 )
-            i->second._program->releaseGLObjects(state);
+        i->second._program->releaseGLObjects(state);
+    }
+
+    for (ShaderMap::const_iterator i = _shaderMap.begin(); i != _shaderMap.end(); ++i)
+    {
+        if (i->data()._shader.valid())
+        {
+            i->data()._shader->releaseGLObjects(state);
+        }
     }
 
     _programCache.clear();
@@ -1048,6 +1151,27 @@ VirtualProgram::setFunctionMaxRange(const std::string& name, float maxRange)
     _dataModelMutex.unlock();
 }
 
+bool VirtualProgram::addGLSLExtension(const std::string& extension)
+{
+   _dataModelMutex.lock();
+   std::pair<std::set<std::string>::const_iterator, bool> insertPair = _globalExtensions.insert(extension);
+   _dataModelMutex.unlock();
+   return insertPair.second;
+}
+bool VirtualProgram::hasGLSLExtension(const std::string& extension) const
+{
+   _dataModelMutex.lock();
+   bool doesHave = _globalExtensions.find(extension)!=_globalExtensions.end();
+   _dataModelMutex.unlock();
+   return doesHave;
+}
+bool VirtualProgram::removeGLSLExtension(const std::string& extension)
+{
+   _dataModelMutex.lock();
+   int erased = _globalExtensions.erase(extension);
+   _dataModelMutex.unlock();
+   return erased > 0;
+}
 void
 VirtualProgram::removeShader( const std::string& shaderID )
 {
@@ -1109,6 +1233,12 @@ VirtualProgram::apply( osg::State& state ) const
         // cannot use capabilities here; it breaks serialization.
         _active = true; //Registry::capabilities().supportsGLSL();
     }
+
+    // An abstract (pure virtual) program cannot be applied.
+    if (_isAbstract)
+    {
+        return;
+    }
     
     const unsigned contextID = state.getContextID();
 
@@ -1160,6 +1290,7 @@ VirtualProgram::apply( osg::State& state ) const
 
     if ( !program.valid() )
     {
+#ifdef PREALLOCATE_APPLY_VARS
         // Access the resuable shader map for this context. Bypasses reallocation overhead.
         ApplyVars& local = _apply[contextID];
 
@@ -1167,6 +1298,9 @@ VirtualProgram::apply( osg::State& state ) const
         local.accumAttribBindings.clear();
         local.accumAttribAliases.clear();
         local.programKey.clear();
+#else
+        ApplyVars local;
+#endif
     
         // If we are inheriting, build the active shader map up to this point
         // (but not including this VP).
@@ -1251,6 +1385,7 @@ VirtualProgram::apply( osg::State& state ) const
                         state,
                         accumFunctions,
                         local.accumShaderMap, 
+                        _globalExtensions,
                         local.accumAttribBindings, 
                         local.accumAttribAliases, 
                         _template.get(),
@@ -1820,6 +1955,24 @@ void PolyShader::resizeGLObjectBuffers(unsigned maxSize)
     }
 }
 
+void PolyShader::releaseGLObjects(osg::State* state) const
+{
+    if (_nominalShader.valid())
+    {
+        _nominalShader->releaseGLObjects(state);
+    }
+
+    if (_geomShader.valid())
+    {
+        _geomShader->releaseGLObjects(state);
+    }
+
+    if (_tessevalShader.valid())
+    {
+        _tessevalShader->releaseGLObjects(state);
+    }
+}
+
 //.......................................................................
 // SERIALIZERS for VIRTUALPROGRAM
 
@@ -1966,7 +2119,7 @@ static bool writeFunctions( osgDB::OutputStream& os, const osgEarth::VirtualProg
     return true;
 }
 
-namespace
+namespace osgEarth { namespace Serializers { namespace VirtualProgram
 {
     REGISTER_OBJECT_WRAPPER(
         VirtualProgram,
@@ -1978,7 +2131,8 @@ namespace
         ADD_UINT_SERIALIZER( Mask, ~0 );
 
         ADD_USER_SERIALIZER( AttribBinding );
-        //ADD_USER_SERIALIZER( FragDataBinding );
         ADD_USER_SERIALIZER( Functions );
+
+        ADD_BOOL_SERIALIZER( IsAbstract, false );
     }
-}
+} } }

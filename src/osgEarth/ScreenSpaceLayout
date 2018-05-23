@@ -103,8 +103,10 @@ namespace osgEarth
               _inAnimTime           ( 0.40f ),
               _outAnimTime          ( 0.00f ),
               _sortByPriority       ( false ),
+              _sortByDistance       ( true ),
               _snapToPixel          ( true ),
-              _maxObjects           ( INT_MAX )
+              _maxObjects           ( INT_MAX ),
+              _renderBinNumber      ( 13 )
         {
             fromConfig(_conf);
         }
@@ -131,6 +133,10 @@ namespace osgEarth
         optional<bool>& sortByPriority() { return _sortByPriority; }
         const optional<bool>& sortByPriority() const { return _sortByPriority; }
 
+        /** If set, activate the AnnotationData distance-based sorting */
+        optional<bool>& sortByDistance() { return _sortByDistance; }
+        const optional<bool>& sortByDistance() const { return _sortByDistance; }
+
         /** Whether to always start rendering text on a pixel boundary, thereby 
           * minimizing filtering artifacts. */
         optional<bool>& snapToPixel() { return _snapToPixel; }
@@ -139,6 +145,10 @@ namespace osgEarth
         /** Maximum number of objects to draw after sorting */
         optional<unsigned>& maxObjects() { return _maxObjects; }
         const optional<unsigned>& maxObjects() const { return _maxObjects; }
+
+        /** Render bin number to use for the screen layout */
+        optional<int>& renderOrder() { return _renderBinNumber; }
+        const optional<int>& renderOrder() const { return _renderBinNumber; }
 
     public:
 
@@ -150,8 +160,10 @@ namespace osgEarth
         optional<float>    _inAnimTime;
         optional<float>    _outAnimTime;
         optional<bool>     _sortByPriority;
+        optional<bool>     _sortByDistance;
         optional<bool>     _snapToPixel;
         optional<unsigned> _maxObjects;
+        optional<int>      _renderBinNumber;
 
         void fromConfig( const Config& conf );
     };
@@ -163,7 +175,7 @@ namespace osgEarth
          * Drawables rendered while this stateset is active will be projected from
          * scene space to 2D screen space with optional decluttering.
          */
-        static void activate(osg::StateSet* stateSet, int binNum =13);
+        static void activate(osg::StateSet* stateSet); //, int binNum =13);
 
         /**
          * Deactivates the use of the screen-space layout engine for a stateset.

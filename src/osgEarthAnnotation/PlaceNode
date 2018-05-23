@@ -120,6 +120,10 @@ namespace osgEarth { namespace Annotation
 
         virtual void dirty();
 
+    protected: // AnnotationNode override
+        
+        virtual bool supportsRenderBinDetails() const { return false; }
+
     protected:
 
         virtual ~PlaceNode() { }
@@ -128,6 +132,7 @@ namespace osgEarth { namespace Annotation
         std::string                        _text;
         Style                              _style;
         class osg::Geode*                  _geode;
+        osg::Geometry*                     _imageGeom;
         osg::ref_ptr<const osgDB::Options> _dbOptions;
         osg::ref_ptr<ScreenSpaceLayoutData> _dataLayout;
 

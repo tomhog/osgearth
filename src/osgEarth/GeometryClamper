@@ -23,7 +23,7 @@
 #include <osgEarth/Common>
 #include <osgEarth/SpatialReference>
 #include <osgEarth/Terrain>
-#include <osgEarth/DPLineSegmentIntersector>
+#include <osgUtil/LineSegmentIntersector>
 #include <osg/NodeVisitor>
 #include <osg/fast_back_stack>
 
@@ -32,6 +32,7 @@ namespace osgEarth
     /**
      * Utility that takes existing OSG geometry and modifies it so that
      * it "conforms" with a terrain patch.
+     * TODO: Consider relocating this into Annotation namespace
      */
     class OSGEARTH_EXPORT GeometryClamper : public osg::NodeVisitor
     {
@@ -57,7 +58,7 @@ namespace osgEarth
 
     public: // osg::NodeVisitor
 
-        void apply( osg::Geode& );
+        void apply( osg::Drawable& );
         void apply( osg::Transform& );
 
     protected:
@@ -68,7 +69,7 @@ namespace osgEarth
         float                                _scale;
         float                                _offset;
         osg::fast_back_stack<osg::Matrixd>   _matrixStack;
-        osg::ref_ptr<DPLineSegmentIntersector> _lsi;
+        osg::ref_ptr<osgUtil::LineSegmentIntersector> _lsi;
     };
 
 

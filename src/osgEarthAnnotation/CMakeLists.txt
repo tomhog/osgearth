@@ -8,18 +8,17 @@ set(LIB_NAME osgEarthAnnotation)
 
 set(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
 
-set(LIB_PUBLIC_HEADERS  
+set(LIB_PUBLIC_HEADERS
     AnnotationSettings
     AnnotationEditing
-    AnnotationExtension
     AnnotationData
+    AnnotationLayer
     AnnotationNode
     AnnotationRegistry
     AnnotationUtils
 	BboxDrawable
     CircleNode
     Common
-    Decoration
     Draggers
     EllipseNode
     Export
@@ -28,28 +27,25 @@ set(LIB_PUBLIC_HEADERS
     GeoPositionNode
     GeoPositionNodeAutoScaler
     LocalGeometryNode
-    HighlightDecoration
     ImageOverlay
     ImageOverlayEditor
     LabelNode
     ModelNode
     PlaceNode
     RectangleNode
-    ScaleDecoration
     TrackNode
 )
 
 set(LIB_COMMON_FILES
     AnnotationEditing.cpp
-    AnnotationExtension.cpp
     AnnotationSettings.cpp
     AnnotationData.cpp
+    AnnotationLayer.cpp
     AnnotationNode.cpp
     AnnotationRegistry.cpp
     AnnotationUtils.cpp
 	BboxDrawable.cpp
     CircleNode.cpp
-    Decoration.cpp
     Draggers.cpp
     EllipseNode.cpp
     FeatureNode.cpp
@@ -57,7 +53,6 @@ set(LIB_COMMON_FILES
     GeoPositionNode.cpp
     GeoPositionNodeAutoScaler.cpp
     LocalGeometryNode.cpp
-    HighlightDecoration.cpp
     ImageOverlay.cpp
     ImageOverlayEditor.cpp
     LabelNode.cpp
@@ -69,7 +64,7 @@ set(LIB_COMMON_FILES
 
 
 ADD_LIBRARY( ${LIB_NAME} ${OSGEARTH_USER_DEFINED_DYNAMIC_OR_STATIC}
-    ${LIB_PUBLIC_HEADERS}  
+    ${LIB_PUBLIC_HEADERS}
     ${LIB_COMMON_FILES}
 )
 

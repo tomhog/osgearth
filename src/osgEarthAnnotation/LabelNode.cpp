@@ -31,6 +31,7 @@
 #include <osgEarth/GeoMath>
 #include <osgEarth/Utils>
 #include <osgEarth/ScreenSpaceLayout>
+#include <osgEarth/Lighting>
 #include <osgText/Text>
 #include <osg/Depth>
 #include <osgUtil/IntersectionVisitor>
@@ -50,12 +51,13 @@ LabelNode::LabelNode(MapNode*            mapNode,
                      const std::string&  text,
                      const Style&        style ) :
 
-GeoPositionNode( mapNode, position ),
+GeoPositionNode( mapNode ),
 _text             ( text ),
 _labelRotationRad ( 0. ),
 _followFixedCourse( false )
 {
     init( style );
+    setPosition( position );
 }
 
 LabelNode::LabelNode(MapNode*            mapNode,
@@ -63,7 +65,7 @@ LabelNode::LabelNode(MapNode*            mapNode,
                      const std::string&  text,
                      const TextSymbol*   symbol ) :
 
-GeoPositionNode( mapNode, position ),
+GeoPositionNode( mapNode ),
 _text             ( text ),
 _labelRotationRad ( 0. ),
 _followFixedCourse( false )
@@ -71,6 +73,7 @@ _followFixedCourse( false )
     Style style;
     style.add( const_cast<TextSymbol*>(symbol) );
     init( style );
+    setPosition( position );
 }
 
 LabelNode::LabelNode(const std::string&  text,
@@ -86,11 +89,12 @@ _followFixedCourse( false )
 LabelNode::LabelNode(MapNode*            mapNode,
                      const GeoPoint&     position,
                      const Style&        style ) :
-GeoPositionNode   ( mapNode, position ),
+GeoPositionNode   ( mapNode ),
 _labelRotationRad ( 0. ),
 _followFixedCourse( false )
 {
     init( style );
+    setPosition( position );
 }
 
 LabelNode::LabelNode(MapNode*            mapNode,
@@ -113,7 +117,12 @@ _followFixedCourse(false)
 void
 LabelNode::init( const Style& style )
 {
-    ScreenSpaceLayout::activate( this->getOrCreateStateSet() );
+    osg::StateSet* ss = this->getOrCreateStateSet();
+
+    ScreenSpaceLayout::activate(ss);
+    
+    // Disable lighting for place nodes by default
+    ss->setDefine(OE_LIGHTING_DEFINE, osg::StateAttribute::OFF);
 
     _geode = new osg::Geode();
 
@@ -138,21 +147,25 @@ LabelNode::setText( const std::string& text )
         return;
     }
 
-    osgText::Text* d = dynamic_cast<osgText::Text*>(_geode->getDrawable(0));
-    if ( d )
+    for (unsigned int i=0; i < _geode->getNumDrawables(); i++)
     {
-        const TextSymbol* symbol = _style.get<TextSymbol>();
-
-        osgText::String::Encoding textEncoding = osgText::String::ENCODING_UNDEFINED;
-        if (symbol && symbol->encoding().isSet())
+        osgText::Text* d = dynamic_cast<osgText::Text*>(_geode->getDrawable(i));
+        if ( d )
         {
-            textEncoding = AnnotationUtils::convertTextSymbolEncoding(symbol->encoding().value());
+            const TextSymbol* symbol = _style.get<TextSymbol>();
+
+            osgText::String::Encoding textEncoding = osgText::String::ENCODING_UNDEFINED;
+            if (symbol && symbol->encoding().isSet())
+            {
+                textEncoding = AnnotationUtils::convertTextSymbolEncoding(symbol->encoding().value());
+            }
+
+            d->setText(text, textEncoding);
+
+            d->dirtyDisplayList();
+            _text = text;
+            return;
         }
-
-        d->setText(text, textEncoding);
-
-        d->dirtyDisplayList();
-        _text = text;
     }
 }
 
@@ -171,22 +184,25 @@ LabelNode::setStyle( const Style& style )
 
     const TextSymbol* symbol = _style.get<TextSymbol>();
 
-    if ( _text.empty() )
-        _text = symbol->content()->eval();
-
-    if ( symbol && symbol->onScreenRotation().isSet() )
+    if (symbol)
     {
-        _labelRotationRad = osg::DegreesToRadians(symbol->onScreenRotation()->eval());
-    }
+        if ( _text.empty() )
+            _text = symbol->content()->eval();
 
-    // In case of a label must follow a course on map, we project a point from the position
-    // with the given bearing. Then during culling phase we compute both points on the screen
-    // and then we can deduce the screen rotation
-    // may be optimized...
-    else if ( symbol && symbol->geographicCourse().isSet() )
-    {
-        _followFixedCourse = true;
-        _labelRotationRad = osg::DegreesToRadians ( symbol->geographicCourse()->eval() );
+        if ( symbol->onScreenRotation().isSet() )
+        {
+            _labelRotationRad = osg::DegreesToRadians(symbol->onScreenRotation()->eval());
+        }
+
+        // In case of a label must follow a course on map, we project a point from the position
+        // with the given bearing. Then during culling phase we compute both points on the screen
+        // and then we can deduce the screen rotation
+        // may be optimized...
+        else if ( symbol->geographicCourse().isSet() )
+        {
+            _followFixedCourse = true;
+            _labelRotationRad = osg::DegreesToRadians ( symbol->geographicCourse()->eval() );
+        }
     }
 
     osg::Drawable* text = AnnotationUtils::createTextDrawable( _text, symbol, osg::Vec3(0,0,0) );
@@ -314,6 +330,8 @@ _followFixedCourse( false )
     conf.getIfSet   ( "text",  _text );
 
     init( *style );
+
+    setPosition(getPosition());
 }
 
 Config

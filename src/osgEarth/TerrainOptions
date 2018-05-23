@@ -26,6 +26,7 @@
 #include <osgEarth/Config>
 #include <osgEarth/GeoCommon>
 #include <osg/Texture>
+#include <osg/LOD>
 
 namespace osgEarth
 {    
@@ -66,7 +67,7 @@ namespace osgEarth
 
         /**
          * The minimum tile LOD range as a factor of the tile's radius.
-         * Default = 6.0.
+         * Default = 7.0.
          */
         optional<float>& minTileRangeFactor() { return _minTileRangeFactor; }
         const optional<float>& minTileRangeFactor() const { return _minTileRangeFactor; }
@@ -76,7 +77,7 @@ namespace osgEarth
          * Default = 0.
          */
         optional<float>& attenuationDistance() { return _attenuationDistance; }
-        const optional<float>& attentuationDistance() const { return _attenuationDistance; }
+        const optional<float>& attenuationDistance() const { return _attenuationDistance; }
 
         /**
          * Transition time, in seconds, for tile image fade-in when LOD blending is enabled
@@ -189,6 +190,20 @@ namespace osgEarth
 
         optional<double>& minExpiryTime() { return _minExpiryTime; }
         const optional<double>& minExpiryTime() const { return _minExpiryTime; }
+
+        /**
+         * Whether the terrain should cast shadows - default is false
+         */
+        optional<bool>& castShadows() { return _castShadows; }
+        const optional<bool>& castShadows() const { return _castShadows; }
+
+        /** Mode to use when calculating LOD switching distances */
+        optional<osg::LOD::RangeMode>& rangeMode() { return _rangeMode;}
+        const optional<osg::LOD::RangeMode>& rangeMode() const { return _rangeMode;}
+
+        /** The size of the tile, in pixels, when using rangeMode = PIXEL_SIZE_ON_SCREEN */
+        optional<float>& tilePixelSize() { return _tilePixelSize; }
+        const optional<float>& tilePixelSize() const { return _tilePixelSize; }
    
     public:
         virtual Config getConfig() const;
@@ -228,6 +243,9 @@ namespace osgEarth
         optional<int> _binNumber;
         optional<int> _minExpiryFrames;
         optional<double> _minExpiryTime;
+        optional<bool> _castShadows;
+        optional<osg::LOD::RangeMode> _rangeMode;
+        optional<float>               _tilePixelSize;
     };
 }
 

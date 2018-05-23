@@ -23,6 +23,7 @@
 #include <osgEarth/Registry>
 #include <osgEarth/ShaderGenerator>
 #include <osgEarth/ObjectIndex>
+#include <osgEarth/GLUtils>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 #include <osgEarthUtil/Controls>
@@ -46,102 +47,69 @@ using namespace osgEarth::Annotation;
 
 namespace ui = osgEarth::Util::Controls;
 
-static ui::LabelControl* s_fidLabel;
-static ui::LabelControl* s_nameLabel;
-static osg::Uniform*     s_highlightUniform;
-
 //-----------------------------------------------------------------------
 
-// Tests the (old) intersection-based picker.
-struct TestIsectPicker : public osgGA::GUIEventHandler
+//! Application-wide data.
+struct App
 {
-    bool handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa)
-    {
-        if ( ea.getEventType() == ea.RELEASE )
-        {
-            IntersectionPicker picker(dynamic_cast<osgViewer::View*>(aa.asView()));
-            IntersectionPicker::Hits hits;
-            if(picker.pick(ea.getX(), ea.getY(), hits)) {
-                std::set<ObjectID> oids;
-                if (picker.getObjectIDs(hits, oids)) {
-                    ObjectIndex* index = Registry::objectIndex();
-                    ObjectID oid = *oids.begin();
-                    osg::ref_ptr<FeatureIndex> fi = index->get<FeatureIndex>(oid);
-                    if ( fi.valid() ) {
-                        OE_NOTICE << "IsectPicker: found OID " << oid << "\n";
-                        Feature* f = fi->getFeature(oid);
-                        if ( f ) {
-                            OE_NOTICE << "...feature ID = " << f->getFID() << "\n";
-                        }
-                    }      
-                    osg::ref_ptr<Feature> f = index->get<Feature>(oid);
-                    if ( f.valid() ) {
-                        OE_NOTICE << "IsectPicker: found OID " << oid << "\n";
-                        OE_NOTICE << "...feature ID = " << f->getFID() << "\n";
-                    }
-                    osg::ref_ptr<AnnotationNode> a = index->get<AnnotationNode>(oid);
-                    if ( a ) {
-                        OE_NOTICE << "IsectPicker: found annotation " << a->getName() << "\n";
-                    }
-                }
-                else {
-                    OE_NOTICE << "IsectPicker: picked, but no OIDs\n";
-                }
-            }
-            else {
-                OE_NOTICE << "IsectPicker: no intersect\n";
-            }
-        }
-        return false;
-    }
+    App(osg::ArgumentParser& args) : viewer(args), mainView(NULL), rttView(NULL), mapNode(NULL), picker(NULL) { }
+
+    osgViewer::CompositeViewer viewer;
+    osgViewer::View* mainView;
+    osgViewer::View* rttView;
+    osgEarth::MapNode* mapNode;
+    osgEarth::Util::RTTPicker* picker;
+
+    ui::LabelControl* fidLabel;
+    ui::LabelControl* nameLabel;
+    osg::Uniform*     highlightUniform;
 };
 
 
-//-----------------------------------------------------------------------
-
-/**
- * Callback that you install on the RTTPicker.
- */
+//! Callback that you install on the RTTPicker.
 struct MyPickCallback : public RTTPicker::Callback
 {
+    App& _app;
+    MyPickCallback(App& app) : _app(app) { }
+
     void onHit(ObjectID id)
     {
         // First see whether it's a feature:
-        FeatureIndex* index = Registry::objectIndex()->get<FeatureIndex>( id );
+        FeatureIndex* index = Registry::objectIndex()->get<FeatureIndex>(id).get();
         Feature* feature = index ? index->getFeature( id ) : 0L;
 
         if ( feature )
         {
-            s_fidLabel->setText( Stringify() << "Feature ID = " << feature->getFID() << " (oid = " << id << ")" );
-            s_nameLabel->setText( Stringify() << "Name = " << feature->getString("name") );
+            _app.fidLabel->setText( Stringify() << "Feature ID = " << feature->getFID() << " (oid = " << id << ")" );
+            _app.nameLabel->setText( Stringify() << "Name = " << feature->getString("name") );
         }
 
         else
         {
             // Check whether it's an annotation:
-            AnnotationNode* anno = Registry::objectIndex()->get<AnnotationNode>( id );
+            AnnotationNode* anno = Registry::objectIndex()->get<AnnotationNode>(id).get();
             if ( anno )
             {
-                s_fidLabel->setText( Stringify() << "ObjectID = " << id );
-                s_nameLabel->setName( Stringify() << "Name = " << anno->getName() );
+                _app.fidLabel->setText( Stringify() << "ObjectID = " << id );
+                _app.nameLabel->setName( Stringify() << "Name = " << anno->getName() );
             }
 
             // None of the above.. clear.
             else
             {
-                s_fidLabel->setText( Stringify() << "unknown oid = " << id );
-                s_nameLabel->setText( " " );
+                _app.fidLabel->setText( Stringify() << "unknown oid = " << id );
+                _app.nameLabel->setText( " " );
             }
         }
 
-        s_highlightUniform->set( id );
+        _app.highlightUniform->set( id );
     }
 
     void onMiss()
     {
-        s_fidLabel->setText( "No pick." );
-        s_nameLabel->setText( " " );
-        s_highlightUniform->set( 0u );
+        _app.fidLabel->setText( "No pick." );
+        _app.nameLabel->setText( " " );
+        _app.highlightUniform->set( 0u );
     }
 
     // pick whenever the mouse moves.
@@ -174,8 +142,11 @@ const char* highlightFrag =
     "        color.rgb = mix(color.rgb, clamp(vec3(0.5,2.0,2.0)*(1.0-color.rgb), 0.0, 1.0), 0.5); \n"
     "} \n";
 
-void installHighlighter(osg::StateSet* stateSet, int attrLocation)
+void installHighlighter(App& app)
 {
+    osg::StateSet* stateSet = app.mapNode->getOrCreateStateSet();
+    int attrLocation = Registry::objectIndex()->getObjectIDAttribLocation();
+
     // This shader program will highlight the selected object.
     VirtualProgram* vp = VirtualProgram::getOrCreate(stateSet);
     vp->setFunction( "checkForHighlight",  highlightVert, ShaderComp::LOCATION_VERTEX_CLIP );
@@ -185,8 +156,8 @@ void installHighlighter(osg::StateSet* stateSet, int attrLocation)
     Registry::objectIndex()->loadShaders( vp );
 
     // A uniform that will tell the shader which object to highlight:
-    s_highlightUniform = new osg::Uniform("objectid_to_highlight", 0u);
-    stateSet->addUniform( s_highlightUniform );
+    app.highlightUniform = new osg::Uniform("objectid_to_highlight", 0u);
+    stateSet->addUniform(app.highlightUniform );
 }
 
 //------------------------------------------------------------------------
@@ -203,18 +174,18 @@ setupRTTView(osgViewer::View* view, osg::Texture* rttTex)
     view->getCamera()->setViewMatrixAsLookAt(osg::Vec3d(0,-1,0), osg::Vec3d(0,0,0), osg::Vec3d(0,0,1));
     view->getCamera()->setProjectionResizePolicy(osg::Camera::FIXED);
 
-    osg::Vec3Array* v = new osg::Vec3Array(4);
-    (*v)[0].set(-.5,0,-.5); (*v)[1].set(.5,0,-.5); (*v)[2].set(.5,0,.5); (*v)[3].set(-.5,0,.5);
+    osg::Vec3Array* v = new osg::Vec3Array(6);
+    (*v)[0].set(-.5,0,-.5); (*v)[1].set(.5,0,-.5); (*v)[2].set(.5,0,.5); (*v)[3].set((*v)[2]); (*v)[4].set(-.5,0,.5);(*v)[5].set((*v)[0]);
 
-    osg::Vec2Array* t = new osg::Vec2Array(4);
-    (*t)[0].set(0,0); (*t)[1].set(1,0); (*t)[2].set(1,1); (*t)[3].set(0,1);
+    osg::Vec2Array* t = new osg::Vec2Array(6);
+    (*t)[0].set(0,0); (*t)[1].set(1,0); (*t)[2].set(1,1); (*t)[3].set((*t)[2]); (*t)[4].set(0,1); (*t)[5].set((*t)[0]);
 
     osg::Geometry* g = new osg::Geometry();
     g->setUseVertexBufferObjects(true);
     g->setUseDisplayList(false);
     g->setVertexArray( v );
     g->setTexCoordArray( 0, t );
-    g->addPrimitiveSet( new osg::DrawArrays(GL_QUADS, 0, 4) );
+    g->addPrimitiveSet( new osg::DrawArrays(GL_TRIANGLES, 0, 6) );
 
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( g );
@@ -226,16 +197,74 @@ setupRTTView(osgViewer::View* view, osg::Texture* rttTex)
     rttTex->setUnRefImageDataAfterApply( false );
     rttTex->setResizeNonPowerOfTwoHint(false);
 
-    stateSet->setMode(GL_LIGHTING, 0);
+    GLUtils::setLighting(stateSet, 0);
     stateSet->setMode(GL_CULL_FACE, 0);
     stateSet->setAttributeAndModes(new osg::BlendFunc(GL_ONE, GL_ZERO), 1);
     
-    const char* fs = "void swap(inout vec4 c) { c.rgba = c==vec4(0)? vec4(1) : vec4(vec3((c.r+c.g+c.b+c.a)/4.0),1); }\n";
+    const char* fs =
+    "#version " GLSL_VERSION_STR "\n"
+    "void swap(inout vec4 c) { c.rgba = c==vec4(0)? vec4(1) : vec4(vec3((c.r+c.g+c.b+c.a)/4.0),1); }\n";
     osgEarth::Registry::shaderGenerator().run(geode);
     VirtualProgram::getOrCreate(geode->getOrCreateStateSet())->setFunction("swap", fs, ShaderComp::LOCATION_FRAGMENT_COLORING);
 
     view->setSceneData( geode );
 }
+
+void startPicker(App& app)
+{
+    // Note! Must stop and restart threading when removing the picker
+    // because it changes the OSG View/Slave configuration.
+    app.viewer.stopThreading();
+
+    app.picker = new RTTPicker();
+    app.mainView->addEventHandler(app.picker);
+
+    // add the graph that will be picked.
+    app.picker->addChild(app.mapNode);
+
+    // install a callback that controls the picker and listens for hits.
+    app.picker->setDefaultCallback(new MyPickCallback(app));
+
+    // Make a view that lets us see what the picker sees.
+    if (app.rttView == NULL)
+    {
+        app.rttView = new osgViewer::View();
+        app.rttView->getCamera()->setGraphicsContext(app.mainView->getCamera()->getGraphicsContext());
+        app.rttView->getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
+        app.viewer.addView(app.rttView);    
+    }
+    setupRTTView(app.rttView, app.picker->getOrCreateTexture(app.mainView));
+    app.rttView->getCamera()->setNodeMask(~0);
+
+    app.viewer.startThreading();
+}
+
+void stopPicker(App& app)
+{
+    // Note! Must stop and restart threading when removing the picker
+    // because it changes the OSG View/Slave configuration.
+    app.viewer.stopThreading();
+
+    //app.viewer.removeView(app.rttView);
+    app.rttView->getCamera()->setNodeMask(0);
+    app.mainView->removeEventHandler(app.picker);
+    app.picker = 0L;
+
+    app.viewer.startThreading();
+}
+
+struct TogglePicker : public ui::ControlEventHandler
+{
+    App& _app;
+    TogglePicker(App& app) : _app(app) { }
+    void onClick(Control* button)
+    {
+        if (_app.picker == 0L)
+            startPicker(_app);
+        else
+            stopPicker(_app);
+    }
+};
 
 //-----------------------------------------------------------------------
 
@@ -255,20 +284,16 @@ main(int argc, char** argv)
     if ( arguments.read("--help") )
         return usage(argv[0]);
 
-    // create a viewer that will hold 2 viewports.
-    osgViewer::CompositeViewer viewer(arguments);
+    App app(arguments);
 
-    osgViewer::View* mainView = new osgViewer::View();
-    mainView->setUpViewInWindow(30, 30, 1024, 1024, 0);
-    mainView->getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
+    app.mainView = new osgViewer::View();
+    app.mainView->setUpViewInWindow(30, 30, 1024, 1024, 0);
+    app.mainView->getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
+    
+    app.viewer.addView(app.mainView);
 
-    viewer.addView(mainView);
-
-    // Tell the database pager to not modify the unref settings
-    mainView->getDatabasePager()->setUnrefImageDataAfterApplyPolicy( false, false );
-
-    // install our default manipulator (do this before calling load)
-    mainView->setCameraManipulator( new EarthManipulator() );    
+    app.mainView->getDatabasePager()->setUnrefImageDataAfterApplyPolicy( false, false );
+    app.mainView->setCameraManipulator( new EarthManipulator() );    
 
     // Made some UI components:
     ui::VBox* uiContainer = new ui::VBox();
@@ -277,42 +302,28 @@ main(int argc, char** argv)
     uiContainer->setBackColor(0,0,0,0.8);
 
     uiContainer->addControl( new ui::LabelControl("RTT Picker Test", osg::Vec4(1,1,0,1)) );
-    s_fidLabel = new ui::LabelControl("---");
-    uiContainer->addControl( s_fidLabel );
-    s_nameLabel = uiContainer->addControl( new ui::LabelControl( "---" ) );
+    uiContainer->addControl( new ui::ButtonControl("Toggle picker", new TogglePicker(app)) );
+    app.fidLabel = new ui::LabelControl("---");
+    uiContainer->addControl( app.fidLabel );
+    app.nameLabel = uiContainer->addControl( new ui::LabelControl( "---" ) );
 
     // Load up the earth file.
-    osg::Node* node = MapNodeHelper().load( arguments, mainView, uiContainer );
+    osg::Node* node = MapNodeHelper().load( arguments, &app.viewer, uiContainer );
     if ( node )
     {
-        mainView->setSceneData( node );    
-        mainView->addEventHandler( new TestIsectPicker() );
+        app.mainView->setSceneData( node );
 
-        // create a picker of the specified size.
-        RTTPicker* picker = new RTTPicker();
-        mainView->addEventHandler( picker );
+        app.mapNode = MapNode::get(node);
 
-        // add the graph that will be picked.
-        picker->addChild( MapNode::get(node) );
+        // start with a picker running
+        startPicker(app);
 
-        // install a callback that controls the picker and listens for hits.
-        picker->setDefaultCallback( new MyPickCallback() );
+        // Highlight features as we pick'em.
+        installHighlighter(app);
 
-        // Make a view that lets us see what the picker sees.
-        osgViewer::View* rttView = new osgViewer::View();
-        rttView->getCamera()->setGraphicsContext( mainView->getCamera()->getGraphicsContext() );
-        rttView->getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
-        viewer.addView( rttView );
-        setupRTTView( rttView, picker->getOrCreateTexture(mainView) );
+        app.mainView->getCamera()->setName( "Main view" );
 
-        // Hightlight features as we pick'em.
-        installHighlighter(
-            MapNode::get(node)->getOrCreateStateSet(),
-            Registry::objectIndex()->getObjectIDAttribLocation() );
-
-        mainView->getCamera()->setName( "Main view" );
-
-        return viewer.run();
+        return app.viewer.run();
     }
     else
     {

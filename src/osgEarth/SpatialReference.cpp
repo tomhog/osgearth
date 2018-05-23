@@ -26,15 +26,12 @@
 #include <osg/Notify>
 #include <ogr_api.h>
 #include <ogr_spatialref.h>
+#include <cpl_conv.h>
 #include <algorithm>
 
 #define LC "[SpatialReference] "
 
 using namespace osgEarth;
-
-// took this out, see issue #79
-//#define USE_CUSTOM_MERCATOR_TRANSFORM 1
-//#undef USE_CUSTOM_MERCATOR_TRANSFORM
 
 //------------------------------------------------------------------------
 
@@ -50,46 +47,9 @@ namespace
             return lowercase ? toLower(val) : val;
         }
         return "";
-    }    
+    } 
 
-    // http://en.wikipedia.org/wiki/Mercator_projection#Mathematics_of_the_projection
-    bool sphericalMercatorToGeographic( std::vector<osg::Vec3d>& points )
-    {
-        for( unsigned i=0; i<points.size(); ++i )
-        {
-            double x = osg::clampBetween(points[i].x(), MERC_MINX, MERC_MAXX);
-            double y = osg::clampBetween(points[i].y(), MERC_MINY, MERC_MAXY);
-            double xr = -osg::PI + ((x-MERC_MINX)/MERC_WIDTH)*2.0*osg::PI;
-            double yr = -osg::PI + ((y-MERC_MINY)/MERC_HEIGHT)*2.0*osg::PI;
-            points[i].x() = osg::RadiansToDegrees( xr );
-            points[i].y() = osg::RadiansToDegrees( 2.0 * atan( exp(yr) ) - osg::PI_2 );
-            // z doesn't change here.
-        }
-        return true;
-    }
-
-    // http://en.wikipedia.org/wiki/Mercator_projection#Mathematics_of_the_projection
-    bool geographicToSphericalMercator( std::vector<osg::Vec3d>& points )
-    {
-        for( unsigned i=0; i<points.size(); ++i )
-        {
-            double lon = osg::clampBetween(points[i].x(), -180.0, 180.0);
-            double lat = osg::clampBetween(points[i].y(), -90.0, 90.0);
-            double xr = (osg::DegreesToRadians(lon) - (-osg::PI)) / (2.0*osg::PI);
-            double sinLat = sin(osg::DegreesToRadians(lat));
-            double oneMinusSinLat = 1-sinLat;
-            if ( oneMinusSinLat != 0.0 )
-            {
-                double yr = ((0.5 * log( (1+sinLat)/oneMinusSinLat )) - (-osg::PI)) / (2.0*osg::PI);
-                points[i].x() = osg::clampBetween(MERC_MINX + (xr * MERC_WIDTH), MERC_MINX, MERC_MAXX);
-                points[i].y() = osg::clampBetween(MERC_MINY + (yr * MERC_HEIGHT), MERC_MINY, MERC_MAXY);
-                // z doesn't change here.
-            }
-        }
-        return true;
-    }
-
-    void geodeticToECEF(std::vector<osg::Vec3d>& points, const osg::EllipsoidModel* em)
+    void geodeticToGeocentric(std::vector<osg::Vec3d>& points, const osg::EllipsoidModel* em)
     {
         for( unsigned i=0; i<points.size(); ++i )
         {
@@ -101,7 +61,7 @@ namespace
         }
     }
 
-    void ECEFtoGeodetic(std::vector<osg::Vec3d>& points, const osg::EllipsoidModel* em)
+    void geocentricToGeodetic(std::vector<osg::Vec3d>& points, const osg::EllipsoidModel* em)
     {
         for( unsigned i=0; i<points.size(); ++i )
         {
@@ -115,14 +75,6 @@ namespace
 }
 
 //------------------------------------------------------------------------
-
-SpatialReference::SRSCache& SpatialReference::getSRSCache()
-{
-    //Make sure the registry is created before the cache
-    osgEarth::Registry::instance();
-    static SRSCache s_cache;
-    return s_cache;
-}
 
 SpatialReference*
 SpatialReference::createFromPROJ4( const std::string& proj4, const std::string& name )
@@ -215,31 +167,14 @@ SpatialReference::createFromUserInput( const std::string& input, const std::stri
 SpatialReference*
 SpatialReference::create( const std::string& horiz, const std::string& vert )
 {
-    return create( Key(horiz, vert), true );
+    return Registry::instance()->getOrCreateSRS( Key(horiz, vert) );
 }
 
 SpatialReference*
-SpatialReference::create( const Key& key, bool useCache )
+SpatialReference::create(const Key& key)
 {
-    // serialized access to SRS creation.
-    static Threading::Mutex s_mutex;
-    Threading::ScopedMutexLock exclusive(s_mutex);
-
-    // first, check the SRS cache to see if it already exists:
-    if ( useCache )
-    {
-        SRSCache::iterator itr = getSRSCache().find(key);
-        if (itr != getSRSCache().end())
-        {
-            return itr->second.get();
-        }
-    }
-
     // now try to resolve the horizontal SRS:
     osg::ref_ptr<SpatialReference> srs;
-
-    //const std::string& horiz = key.first;
-    //const std::string& vert  = key.second;
 
     // shortcut for spherical-mercator:
     if (key.horizLower == "spherical-mercator" || 
@@ -343,13 +278,7 @@ SpatialReference::create( const Key& key, bool useCache )
 
     srs->_key = key;
 
-    if ( useCache )
-    {
-        // cache it - each unique SRS only exists once.
-        getSRSCache()[key] = srs;
-    }
-
-    return useCache ? srs.get() : srs.release();
+    return srs.release();
 }
 
 SpatialReference*
@@ -364,10 +293,22 @@ SpatialReference::create( osg::CoordinateSystemNode* csn )
 }
 
 SpatialReference*
-SpatialReference::createFromHandle( void* ogrHandle, bool xferOwnership )
+SpatialReference::createFromHandle(void* ogrHandle)
 {
-    SpatialReference* srs = new SpatialReference( ogrHandle, xferOwnership );
-    return srs;
+    if (!ogrHandle)
+    {
+        OE_WARN << LC << "Illegal call to createFromHandle(NULL)" << std::endl;
+        return 0L;
+    }
+
+    void* clonedHandle = OSRClone(ogrHandle);
+    if (!clonedHandle)
+    {
+        OE_WARN << LC << "Internal error: createFromHandle() failed to clone" << std::endl;
+        return 0L;
+    }
+
+    return new SpatialReference(clonedHandle);
 }
 
 SpatialReference*
@@ -429,7 +370,7 @@ _handle         ( handle ),
 _owns_handle    ( true ),
 _init_type      ( init_type ),
 _is_geographic  ( false ),
-_is_ecef        ( false ),
+_is_geocentric  ( false ),
 _is_mercator    ( false ),
 _is_north_polar ( false ), 
 _is_south_polar ( false ),
@@ -451,7 +392,7 @@ _handle        ( handle ),
 _owns_handle   ( ownsHandle ),
 _is_ltp        ( false ),
 _is_plate_carre( false ),
-_is_ecef       ( false )
+_is_geocentric ( false )
 {
     //nop
 }
@@ -460,7 +401,14 @@ SpatialReference::~SpatialReference()
 {
     if ( _handle )
     {
-        GDAL_SCOPED_LOCK;
+        if (_initialized)
+        {
+            OE_DEBUG << LC << "Destroying " << getName() << std::endl;
+        }
+        else
+        {
+            OE_DEBUG << LC << "Destroying [unitialized SRS]" << std::endl;
+        }
 
         for (TransformHandleCache::iterator itr = _transformHandleCache.begin(); itr != _transformHandleCache.end(); ++itr)
         {
@@ -497,15 +445,15 @@ SpatialReference::isProjected() const
 {
     if ( !_initialized )
         const_cast<SpatialReference*>(this)->init();
-    return !_is_geographic && !_is_ecef;
+    return !_is_geographic && !_is_geocentric;
 }
 
 bool
-SpatialReference::isECEF() const 
+SpatialReference::isGeocentric() const 
 {
     if ( !_initialized )
         const_cast<SpatialReference*>(this)->init();
-    return _is_ecef;
+    return _is_geocentric;
 }
 
 const std::string&
@@ -640,7 +588,7 @@ SpatialReference::_isEquivalentTo( const SpatialReference* rhs, bool considerVDa
         return false;
     }
 
-    if (isECEF() && rhs->isECEF())
+    if (isGeocentric() && rhs->isGeocentric())
         return true;
 
     if ( considerVDatum && (_vdatum.get() != rhs->_vdatum.get()) )
@@ -682,7 +630,7 @@ SpatialReference::getGeographicSRS() const
         return this;
 
     if ( _is_spherical_mercator )
-        return create("wgs84");
+        return get("wgs84");
 
     if ( !_geo_srs.valid() )
     {
@@ -749,19 +697,26 @@ SpatialReference::getGeodeticSRS() const
 const SpatialReference*
 SpatialReference::getECEF() const
 {
+    OE_DEPRECATED(SpatialReference::getECEF, getGeocentricSRS);
+    return getGeocentricSRS();
+}
+
+const SpatialReference*
+SpatialReference::getGeocentricSRS() const
+{
     if ( !_initialized )
         const_cast<SpatialReference*>(this)->init();
 
-    if ( _is_ecef )
+    if ( _is_geocentric )
         return this;
 
-    if ( !_ecef_srs.valid() )
+    if ( !_geocentric_srs.valid() )
     {
         const SpatialReference* geo = getGeographicSRS(); // before the lock please.
 
         GDAL_SCOPED_LOCK;
 
-        if ( !_ecef_srs.valid() ) // double-check pattern
+        if ( !_geocentric_srs.valid() ) // double-check pattern
         {
             void* new_handle = OSRNewSpatialReference( NULL );
             int err = OSRCopyGeogCSFrom( new_handle, geo->_handle );
@@ -769,9 +724,9 @@ SpatialReference::getECEF() const
             {
                 // make a new geographic srs, and copy over the vertical datum
                 SpatialReference* ncthis = const_cast<SpatialReference*>(this);
-                ncthis->_ecef_srs = new SpatialReference( new_handle );
-                ncthis->_ecef_srs->_vdatum = 0L; // no vertical datum in ECEF
-                ncthis->_ecef_srs->_is_ecef = true;
+                ncthis->_geocentric_srs = new SpatialReference( new_handle );
+                ncthis->_geocentric_srs->_vdatum = 0L; // no vertical datum in ECEF
+                ncthis->_geocentric_srs->_is_geocentric = true;
             }
             else
             {
@@ -781,7 +736,7 @@ SpatialReference::getECEF() const
         }
     }
 
-    return _ecef_srs.get();
+    return _geocentric_srs.get();
 }
 
 const SpatialReference*
@@ -980,16 +935,15 @@ SpatialReference::createLocalToWorld(const osg::Vec3d& xyz, osg::Matrixd& out_lo
             return false;
         out_local2world = osg::Matrix::translate(world);
     }
-    else if ( isECEF() )
+    else if ( isGeocentric() )
     {
-        //out_local2world = ECEF::createLocalToWorld(xyz);
         _ellipsoid->computeLocalToWorldTransformFromXYZ(xyz.x(), xyz.y(), xyz.z(), out_local2world);
     }
     else
     {
         // convert to ECEF:
         osg::Vec3d ecef;
-        if ( !transform(xyz, getECEF(), ecef) )
+        if ( !transform(xyz, getGeocentricSRS(), ecef) )
             return false;
 
         // and create the matrix.
@@ -1048,36 +1002,19 @@ SpatialReference::transform(std::vector<osg::Vec3d>& points,
     const SpatialReference* inputSRS = preTransform( points );
     if ( !inputSRS )
         return false;
-
-    // Spherical Mercator is a special case transformation, because we want to bypass
-    // any normal horizontal datum conversion. In other words we ignore the ellipsoid
-    // of the other SRS and just do a straight spherical conversion.
-    if ( inputSRS->isGeographic() && outputSRS->isSphericalMercator() )
-    {        
-        inputSRS->transformZ( points, outputSRS, true );
-        success = geographicToSphericalMercator( points );
-        return success;
-    }
-
-    else if ( inputSRS->isSphericalMercator() && outputSRS->isGeographic() )
-    {     
-        success = sphericalMercatorToGeographic( points );
-        inputSRS->transformZ( points, outputSRS, true );
-        return success;
-    }
-
-    else if ( inputSRS->isECEF() && !outputSRS->isECEF() )
+        
+    if ( inputSRS->isGeocentric() && !outputSRS->isGeocentric() )
     {
         const SpatialReference* outputGeoSRS = outputSRS->getGeodeticSRS();
-        ECEFtoGeodetic(points, outputGeoSRS->getEllipsoid());
+        geocentricToGeodetic(points, outputGeoSRS->getEllipsoid());
         return outputGeoSRS->transform(points, outputSRS);
     }
 
-    else if ( !inputSRS->isECEF() && outputSRS->isECEF() )
+    else if ( !inputSRS->isGeocentric() && outputSRS->isGeocentric() )
     {
         const SpatialReference* outputGeoSRS = outputSRS->getGeodeticSRS();
         success = inputSRS->transform(points, outputGeoSRS);
-        geodeticToECEF(points, outputGeoSRS->getEllipsoid());
+        geodeticToGeocentric(points, outputGeoSRS->getEllipsoid());
         return success;
     }
 
@@ -1166,6 +1103,10 @@ SpatialReference::transformXYPointArrays(double*  x,
     // Transform the X and Y values inside an exclusive GDAL/OGR lock
     GDAL_SCOPED_LOCK;
 
+    //OE_INFO << LC << "Attempt transfrom from \n"
+    //    << "    " << getHorizInitString() << "\n"
+    //    << " -> " << out_srs->getHorizInitString() << std::endl;
+
     void* xform_handle = NULL;
     TransformHandleCache::const_iterator itr = _transformHandleCache.find(out_srs->getWKT());
     if (itr != _transformHandleCache.end())
@@ -1186,6 +1127,10 @@ SpatialReference::transformXYPointArrays(double*  x,
             << "SRS xform not possible" << std::endl
             << "    From => " << getName() << std::endl
             << "    To   => " << out_srs->getName() << std::endl;
+
+        OE_WARN << LC << "INPUT: " << getWKT() << std::endl
+            << "OUTPUT: " << out_srs->getWKT() << std::endl;
+
         return false;
     }
 
@@ -1260,10 +1205,9 @@ bool
 SpatialReference::transformToWorld(const osg::Vec3d& input,
                                    osg::Vec3d&       output ) const
 {
-    if ( (isGeographic() && !isPlateCarre()) || isCube() ) //isGeographic() && !_is_plate_carre )
+    if ( (isGeographic() && !isPlateCarre()) || isCube() )
     {
-        return transform(input, getECEF(), output);
-        //return transformToECEF(input, output);
+        return transform(input, getGeocentricSRS(), output);
     }
     else // isProjected || _is_plate_carre
     {
@@ -1287,8 +1231,7 @@ SpatialReference::transformFromWorld(const osg::Vec3d& world,
 {
     if ( (isGeographic() && !isPlateCarre()) || isCube() )
     {
-        //return transformFromECEF(world, output, out_haeZ);
-        bool ok = getECEF()->transform(world, this, output);
+        bool ok = getGeocentricSRS()->transform(world, this, output);
         if ( ok && out_haeZ )
         {
             if ( _vdatum.valid() )
@@ -1330,7 +1273,7 @@ SpatialReference::transformUnits(double                  input,
         double inputDegrees = getUnits().convertTo(Units::METERS, input) / (metersPerEquatorialDegree * cos(osg::DegreesToRadians(latitude)));
         return Units::DEGREES.convertTo( outSRS->getUnits(), inputDegrees );
     }
-    else if ( this->isECEF() && outSRS->isGeographic() )
+    else if ( this->isGeocentric() && outSRS->isGeographic() )
     {
         double metersPerEquatorialDegree = (outSRS->getEllipsoid()->getRadiusEquator() * 2.0 * osg::PI) / 360.0;
         double inputDegrees = input / (metersPerEquatorialDegree * cos(osg::DegreesToRadians(latitude)));
@@ -1342,7 +1285,7 @@ SpatialReference::transformUnits(double                  input,
         double inputMeters = getUnits().convertTo(Units::DEGREES, input) * (metersPerEquatorialDegree * cos(osg::DegreesToRadians(latitude)));
         return Units::METERS.convertTo( outSRS->getUnits(), inputMeters );
     }
-    else if ( this->isGeographic() && outSRS->isECEF() )
+    else if ( this->isGeographic() && outSRS->isGeocentric() )
     {
         double metersPerEquatorialDegree = (outSRS->getEllipsoid()->getRadiusEquator() * 2.0 * osg::PI) / 360.0;
         return getUnits().convertTo(Units::DEGREES, input) * (metersPerEquatorialDegree * cos(osg::DegreesToRadians(latitude)));
@@ -1386,23 +1329,6 @@ SpatialReference::transformExtentToMBR(const SpatialReference* to_srs,
     if ( !_initialized )
         const_cast<SpatialReference*>(this)->init();
 
-    //Original code that checks the 4 corners of the bounds and translates them
-#if 0
-    // Transform all points and take the maximum bounding rectangle the resulting points
-    std::vector<osg::Vec3d> v;
-    v.push_back( osg::Vec3d(in_out_xmin, in_out_ymin, 0) ); // ll
-    v.push_back( osg::Vec3d(in_out_xmin, in_out_ymax, 0) ); // ul
-    v.push_back( osg::Vec3d(in_out_xmax, in_out_ymax, 0) ); // ur
-    v.push_back( osg::Vec3d(in_out_xmax, in_out_ymin, 0) ); // lr
-    if ( transform(v, to_srs) )
-    {
-        in_out_xmin = std::min( v[0].x(), v[1].x() );
-        in_out_xmax = std::max( v[2].x(), v[3].x() );
-        in_out_ymin = std::min( v[0].y(), v[3].y() );
-        in_out_ymax = std::max( v[1].y(), v[2].y() );
-        return true;
-    }
-#else
     // Transform all points and take the maximum bounding rectangle the resulting points
     std::vector<osg::Vec3d> v;
 
@@ -1447,10 +1373,9 @@ SpatialReference::transformExtentToMBR(const SpatialReference* to_srs,
         v.push_back( osg::Vec3d(in_out_xmin + dWidth * (double)i, in_out_ymin, 0) );
     }
     
-    
-    
     if ( transform(v, to_srs) )
     {
+        bool swapXValues = ( isGeographic() && in_out_xmin > in_out_xmax );
         in_out_xmin = DBL_MAX;
         in_out_ymin = DBL_MAX;
         in_out_xmax = -DBL_MAX;
@@ -1464,11 +1389,11 @@ SpatialReference::transformExtentToMBR(const SpatialReference* to_srs,
             in_out_ymax = std::max( v[i].y(), in_out_ymax );
         }
 
+        if ( swapXValues )
+            std::swap( in_out_xmin, in_out_xmax );
+
         return true;
     }
-
-   
-#endif
 
     return false;
 }
@@ -1495,8 +1420,6 @@ bool SpatialReference::transformExtentPoints(const SpatialReference* to_srs,
             const double dest_y = in_ymin + fr * dy;
 
             points.push_back(osg::Vec3d(dest_x, dest_y, 0));
-            //x[pixel] = dest_x;
-            //y[pixel] = dest_y;
             pixel++;     
         }
     }
@@ -1534,7 +1457,7 @@ SpatialReference::_init()
     _is_user_defined = false; 
     _is_contiguous = true;
     _is_cube = false;
-    if ( _is_ecef || _is_plate_carre )
+    if ( _is_geocentric || _is_plate_carre )
         _is_geographic = false;
     else
         _is_geographic = OSRIsGeographic( _handle ) != 0;
@@ -1606,7 +1529,7 @@ SpatialReference::_init()
     if ( OSRExportToProj4( _handle, &proj4buf ) == OGRERR_NONE )
     {
         _proj4 = proj4buf;
-        OGRFree( proj4buf );
+        CPLFree( proj4buf );
     }
 
     // Try to extract the OGC well-known-text (WKT) string:
@@ -1614,7 +1537,7 @@ SpatialReference::_init()
     if ( OSRExportToWkt( _handle, &wktbuf ) == OGRERR_NONE )
     {
         _wkt = wktbuf;
-        OGRFree( wktbuf );
+        CPLFree( wktbuf );
     }
 
     // Build a 'normalized' initialization key.
@@ -1637,4 +1560,34 @@ SpatialReference::_init()
     }
 
     _initialized = true;
+}
+
+bool
+SpatialReference::guessBounds(Bounds& bounds) const
+{
+    if (isGeographic())
+    {
+        bounds.set(-180.0, -90.0, 180.0, 90.0);
+        return true;
+    }
+    
+    if (isMercator() || isSphericalMercator())
+    {
+        bounds.set(MERC_MINX, MERC_MINY, MERC_MAXX, MERC_MAXY);
+        return true;
+    }
+
+    GDAL_SCOPED_LOCK;
+
+    int isNorth;
+    if (OSRGetUTMZone(_handle, &isNorth))
+    {
+        if (isNorth)
+            bounds.set(166000, 0, 834000, 9330000);
+        else
+            bounds.set(166000, 1116915, 834000, 10000000);
+        return true;
+    }
+
+    return false;
 }

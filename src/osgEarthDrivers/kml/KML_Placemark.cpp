@@ -112,6 +112,11 @@ KML_Placemark::build( xml_node<>* node, KMLContext& cx )
                 // the annotation name:
                 std::string name = getValue(node, "name");
 
+                if (!name.empty())
+                {
+                    OE_INFO << LC << "Placemark: " << name << std::endl;
+                }
+
                 AnnotationNode* featureNode = 0L;
                 AnnotationNode* iconNode    = 0L;
                 AnnotationNode* modelNode   = 0L;
@@ -122,7 +127,7 @@ KML_Placemark::build( xml_node<>* node, KMLContext& cx )
                     // if there's a model, render that - models do NOT get labels.
                     if ( model )
                     {
-                        ModelNode* node = new ModelNode( cx._mapNode, style, cx._dbOptions );
+                        ModelNode* node = new ModelNode( cx._mapNode, style, cx._dbOptions.get() );
                         node->setPosition( position );
 
                         // model scale:
@@ -155,7 +160,7 @@ KML_Placemark::build( xml_node<>* node, KMLContext& cx )
                     // is there an icon?
                     if ( icon )
                     {
-                        iconNode = new PlaceNode( cx._mapNode, position, style, cx._dbOptions );
+                        iconNode = new PlaceNode( cx._mapNode, position, style, cx._dbOptions.get() );
                     }
 
                     else if ( !model && text && !name.empty() )
@@ -238,7 +243,18 @@ KML_Placemark::build( xml_node<>* node, KMLContext& cx )
                     }
                     if ( featureNode )
                     {
-                        cx._groupStack.top()->addChild( featureNode );
+                        osg::Node* child = featureNode;
+
+                        // If this feature node is map-clamped, we most likely need a depth-offset
+                        // shader to prevent z-fighting with the terrain.
+                        if (alt && alt->clamping() == alt->CLAMP_TO_TERRAIN && alt->technique() == alt->TECHNIQUE_MAP)
+                        {
+                            DepthOffsetGroup* g = new DepthOffsetGroup();
+                            g->addChild( featureNode );
+                            child = g;
+                        }
+                
+                        cx._groupStack.top()->addChild( child );
                         KML_Feature::build( node, cx, featureNode );
                     }
                 }

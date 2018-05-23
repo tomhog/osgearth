@@ -26,6 +26,7 @@
 
 #include <osgEarthFeatures/GeometryCompiler>
 #include <osgEarthFeatures/GeometryUtils>
+#include <osgEarthFeatures/FilterContext>
 
 #include <osgEarthSymbology/AltitudeSymbol>
 
@@ -49,6 +50,41 @@ using namespace osgEarth::Annotation;
 using namespace osgEarth::Features;
 using namespace osgEarth::Symbology;
 
+FeatureNode::FeatureNode(Feature* feature,
+                         const Style& in_style,
+                         const GeometryCompilerOptions& options,
+                         StyleSheet* styleSheet) :
+AnnotationNode(),
+_options           ( options ),
+_needsRebuild      ( true ),
+_styleSheet        ( styleSheet ),
+_clampDirty        (false)
+{
+    _features.push_back( feature );
+
+    Style style = in_style;
+    if (style.empty() && feature->style().isSet())
+    {
+        style = *feature->style();
+    }
+
+    setStyle( style );
+}
+
+FeatureNode::FeatureNode(const FeatureList& features,
+                         const Style& style,
+                         const GeometryCompilerOptions& options,
+                         StyleSheet* styleSheet):
+AnnotationNode(),
+_options        ( options ),
+_needsRebuild   ( true ),
+_styleSheet     ( styleSheet ),
+_clampDirty     ( false )
+{
+    _features.insert( _features.end(), features.begin(), features.end() );
+    setStyle( style );
+}
+
 FeatureNode::FeatureNode(MapNode* mapNode,
                          Feature* feature,
                          const Style& in_style,
@@ -57,7 +93,8 @@ FeatureNode::FeatureNode(MapNode* mapNode,
 AnnotationNode(),
 _options           ( options ),
 _needsRebuild      ( true ),
-_styleSheet        ( styleSheet )
+_styleSheet        ( styleSheet ),
+_clampDirty        (false)
 {
     _features.push_back( feature );
 
@@ -73,14 +110,15 @@ _styleSheet        ( styleSheet )
 }
 
 FeatureNode::FeatureNode(MapNode* mapNode,
-                         FeatureList& features,
+                         const FeatureList& features,
                          const Style& style,
                          const GeometryCompilerOptions& options,
                          StyleSheet* styleSheet):
 AnnotationNode(),
 _options        ( options ),
 _needsRebuild   ( true ),
-_styleSheet     ( styleSheet )
+_styleSheet     ( styleSheet ),
+_clampDirty     ( false )
 {
     _features.insert( _features.end(), features.begin(), features.end() );
     FeatureNode::setMapNode( mapNode );
@@ -190,15 +228,9 @@ FeatureNode::build()
         // GPU-clamped geometry
         else if ( ap.gpuClamping )
         {
-            ClampableNode* clampable = new ClampableNode( getMapNode() );
+            ClampableNode* clampable = new ClampableNode();
             clampable->addChild( _attachPoint );
             this->addChild( clampable );
-
-            const RenderSymbol* render = style.get<RenderSymbol>();
-            if ( render && render->depthOffset().isSet() )
-            {
-                clampable->setDepthOffsetOptions( *render->depthOffset() );
-            }
         }
 
         else
@@ -208,15 +240,17 @@ FeatureNode::build()
             // set default lighting based on whether we are extruding:
             setLightingIfNotSet( style.has<ExtrusionSymbol>() );
 
-            applyRenderSymbology( style );
+            //applyRenderSymbology( style );
         }
+
+        applyRenderSymbology(style);
 
         if ( getMapNode()->getTerrain() )
         {
             if ( ap.sceneClamping )
             {
                 getMapNode()->getTerrain()->addTerrainCallback( _clampCallback.get() );
-                clamp( getMapNode()->getTerrain(), getMapNode()->getTerrain()->getGraph() );
+                clamp( getMapNode()->getTerrain()->getGraph(), getMapNode()->getTerrain() );
             }
             else
             {
@@ -259,7 +293,7 @@ FeatureNode::setStyle(const Style& style)
 
 StyleSheet* FeatureNode::getStyleSheet() const
 {
-    return _styleSheet;
+    return _styleSheet.get();
 }
 
 void FeatureNode::setStyleSheet(StyleSheet* styleSheet)
@@ -271,7 +305,7 @@ Feature* FeatureNode::getFeature()
 {
     if (_features.size() == 1)
     {
-        return _features.front();
+        return _features.front().get();
     }
     return 0;
 }
@@ -296,32 +330,75 @@ void FeatureNode::init()
 // This will be called by AnnotationNode when a new terrain tile comes in.
 void
 FeatureNode::onTileAdded(const TileKey&          key,
-                         osg::Node*              tile,
+                         osg::Node*              graph,
                          TerrainCallbackContext& context)
 {
-    if ( !tile || _featurePolytope.contains( tile->getBound() ) )
+    if (!_clampDirty)
     {
-        clamp( context.getTerrain(), tile );
+        bool needsClamp;
+
+        if (key.valid())
+        {
+            osg::Polytope tope;
+            key.getExtent().createPolytope(tope);
+            needsClamp = tope.contains(this->getBound());
+        }
+        else
+        {
+            // without a valid tilekey we don't know the extent of the change,
+            // so clamping is required.
+            needsClamp = true;
+        }
+
+        if (needsClamp)
+        {
+            _clampDirty = true;
+            ADJUST_UPDATE_TRAV_COUNT(this, +1);
+            //clamp(graph, context.getTerrain());
+        }
     }
 }
 
 void
-FeatureNode::clamp(const Terrain* terrain, osg::Node* patch)
+FeatureNode::clamp(osg::Node* graph, const Terrain* terrain)
 {
-    if ( terrain && patch )
+    if ( terrain && graph )
     {
         const AltitudeSymbol* alt = getStyle().get<AltitudeSymbol>();
+        if (alt && alt->technique() != alt->TECHNIQUE_SCENE)
+            return;
+
         bool relative = alt && alt->clamping() == alt->CLAMP_RELATIVE_TO_TERRAIN && alt->technique() == alt->TECHNIQUE_SCENE;
+        float offset = alt ? alt->verticalOffset()->eval() : 0.0f;
 
         GeometryClamper clamper;
-        clamper.setTerrainPatch( patch );
+        clamper.setTerrainPatch( graph );
         clamper.setTerrainSRS( terrain->getSRS() );
         clamper.setPreserveZ( relative );
+        clamper.setOffset( offset );
 
         this->accept( clamper );
-        this->dirtyBound();
     }
 }
+
+void
+FeatureNode::traverse(osg::NodeVisitor& nv)
+{
+    if (nv.getVisitorType() == nv.UPDATE_VISITOR && _clampDirty)
+    {
+        if (getMapNode())
+        {
+            osg::ref_ptr<Terrain> terrain = getMapNode()->getTerrain();
+            if (terrain.valid())
+                clamp(terrain->getGraph(), terrain.get());
+
+            ADJUST_UPDATE_TRAV_COUNT(this, -1);
+            _clampDirty = false;
+        }
+    }
+    AnnotationNode::traverse(nv);
+}
+
 
 //-------------------------------------------------------------------
 
@@ -331,7 +408,8 @@ OSGEARTH_REGISTER_ANNOTATION( feature, osgEarth::Annotation::FeatureNode );
 FeatureNode::FeatureNode(MapNode*              mapNode,
                          const Config&         conf,
                          const osgDB::Options* dbOptions ) :
-AnnotationNode(conf)
+AnnotationNode(conf),
+_clampDirty(false)
 {
     osg::ref_ptr<Geometry> geom;
     if ( conf.hasChild("geometry") )
@@ -339,13 +417,13 @@ AnnotationNode(conf)
         Config geomconf = conf.child("geometry");
         geom = GeometryUtils::geometryFromWKT( geomconf.value() );
         if ( !geom.valid() )
-            OE_WARN << LC << "Config is missing required 'geometry' element" << std::endl;
+            OE_WARN << LC << "Config (" << conf.value("name") << ") is missing valid 'geometry' element" << std::endl;
     }
 
     osg::ref_ptr<const SpatialReference> srs;
     srs = SpatialReference::create( conf.value("srs"), conf.value("vdatum") );
     if ( !srs.valid() )
-        OE_WARN << LC << "Config is missing required 'srs' element" << std::endl;
+        OE_WARN << LC << "Config is missing valid 'srs' element" << std::endl;
 
     optional<GeoInterpolation> geoInterp;
 

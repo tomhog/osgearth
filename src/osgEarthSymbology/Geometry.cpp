@@ -37,7 +37,7 @@ using namespace geos;
 using namespace geos::operation;
 #endif
 
-#define GEOS_OUT OE_DEBUG
+#define GEOS_OUT OE_INFO
 
 #define LC "[Geometry] "
 
@@ -319,7 +319,7 @@ Geometry::crop( const Bounds& bounds, osg::ref_ptr<Geometry>& output ) const
     (*poly)[1].set(bounds.xMax(), bounds.yMin(), 0);
     (*poly)[2].set(bounds.xMax(), bounds.yMax(), 0);
     (*poly)[3].set(bounds.xMin(), bounds.yMax(), 0);
-    return crop(poly, output);
+    return crop(poly.get(), output);
 }
 
 bool
@@ -633,6 +633,9 @@ Geometry::getOrientation() const
 double
 Geometry::getLength() const
 {
+    if (empty())
+        return 0.0;
+
     double length = 0;
     for (unsigned int i = 0; i < size()-1; ++i)
     {
@@ -641,6 +644,14 @@ Geometry::getLength() const
         length += (next - current).length();
     }
     return length;
+}
+
+// ensures that the first and last points are idential.
+void 
+Geometry::close()
+{
+    if ( size() > 0 && front() != back() )
+        push_back( front() );
 }
 
 //----------------------------------------------------------------------------
@@ -653,6 +664,12 @@ Geometry( rhs )
 
 PointSet::~PointSet()
 {
+}
+
+void
+PointSet::close()
+{
+    //NOP. Don't close point sets..
 }
 
 //----------------------------------------------------------------------------
@@ -692,6 +709,12 @@ LineString::getSegment(double length, osg::Vec3d& start, osg::Vec3d& end)
     return false;
 }
 
+void
+LineString::close()
+{
+    //NOP - dont' close line strings.
+}
+
 //----------------------------------------------------------------------------
 
 Ring::Ring( const Ring& rhs ) :
@@ -726,6 +749,9 @@ Ring::cloneAs( const Geometry::Type& newType ) const
 double
 Ring::getLength() const
 {
+    if (empty())
+        return 0.0;
+
     double length = Geometry::getLength();
     if ( isOpen() )
     {
@@ -742,12 +768,10 @@ Ring::open()
         erase( end()-1 );
 }
 
-// ensures that the first and last points are idential.
-void 
+void
 Ring::close()
 {
-    if ( size() > 0 && front() != back() )
-        push_back( front() );
+    Geometry::close();
 }
 
 // whether the ring is open.
@@ -900,8 +924,13 @@ MultiGeometry::~MultiGeometry()
 Geometry::Type
 MultiGeometry::getComponentType() const
 {
-    // dicey.
-    return _parts.size() > 0 ? _parts.front()->getType() : TYPE_UNKNOWN;
+    if (_parts.size() == 0)
+        return TYPE_UNKNOWN;
+
+    if (_parts.front()->getType() == TYPE_MULTI)
+        return _parts.front()->getComponentType();
+
+    return _parts.front()->getType();
 }
 
 int
@@ -967,6 +996,15 @@ MultiGeometry::isValid() const
             valid = false;
     }
     return valid;
+}
+
+void
+MultiGeometry::close()
+{
+    for( GeometryCollection::const_iterator i = _parts.begin(); i != _parts.end(); ++i )
+    {
+        i->get()->close();
+    }
 }
 
 // opens and rewinds the polygon to the specified orientation.

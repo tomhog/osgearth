@@ -24,13 +24,19 @@
 #include "RenderBindings"
 #include "TileNode"
 #include "EngineContext"
+#include "TileRenderModel"
+#include <osgEarth/Progress>
 
 namespace osgEarth { namespace Drivers { namespace RexTerrainEngine
-{    
+{
     class LoadTileData : public Loader::Request
     {
     public:
         LoadTileData(TileNode* tilenode, EngineContext* factory);
+
+        CreateTileModelFilter& filter() { return _filter; }
+
+        void setEnableCancelation(bool value) { _enableCancel = value; }
 
     public: // Loader::Request
 
@@ -40,10 +46,20 @@ namespace osgEarth { namespace Drivers { namespace RexTerrainEngine
         /** Applies the fetched data to the tile node (scene-graph safe) */
         void apply(const osg::FrameStamp*);
 
+        //! Creates a stateset containing GL compilable objects from the model
+        osg::StateSet* createStateSet() const;
+
     protected:
-        osg::observer_ptr<TileNode>    _tilenode;
-        EngineContext*              _context;
-        osg::ref_ptr<TerrainTileModel> _model;
+        osg::observer_ptr<TileNode> _tilenode;
+        osg::observer_ptr<TerrainEngineNode> _engine;
+        osg::observer_ptr<EngineContext> _context;
+        osg::ref_ptr<TerrainTileModel> _dataModel;
+        TileRenderModel _renderModel;
+        CreateTileModelFilter _filter;
+        osg::observer_ptr< const Map > _map;
+        bool _enableCancel;
+
+        virtual ~LoadTileData() { }
     };
 
 } } } // namespace osgEarth::Drivers::RexTerrainEngine

@@ -106,7 +106,11 @@ namespace
                     return diff < 0.0f;
 
                 // then fallback on traversal order.
+#if OSG_VERSION_GREATER_THAN(3,6,0)
+                diff = float(lhs->_traversalOrderNumber) - float(rhs->_traversalOrderNumber);
+#else
                 diff = float(lhs->_traversalNumber) - float(rhs->_traversalNumber);
+#endif
                 return diff < 0.0f;
             }
         }
@@ -122,9 +126,9 @@ namespace
     // TODO: a way to clear out this list when drawables go away
     struct DrawableInfo
     {
-        DrawableInfo() : _lastAlpha(1.0), _lastScale(1.0), _lastXY(-1.0, -1.0) { }
+        DrawableInfo() : _lastAlpha(1.0f), _lastScale(1.0f), _frame(0u) { }
         float _lastAlpha, _lastScale;
-        osg::Vec2d _lastXY;
+        unsigned _frame;
     };
 
     typedef std::map<const osg::Drawable*, DrawableInfo> DrawableMemory;
@@ -147,6 +151,7 @@ namespace
         // time stamp of the previous pass, for calculating animation speed
         osg::Timer_t _lastTimeStamp;
         bool _firstFrame;
+        osg::Matrix _lastCamVPW;
     };
 
     static bool s_declutteringEnabledGlobally = true;
@@ -170,8 +175,10 @@ ScreenSpaceLayoutOptions::fromConfig( const Config& conf )
     conf.getIfSet( "in_animation_time",   _inAnimTime );
     conf.getIfSet( "out_animation_time",  _outAnimTime );
     conf.getIfSet( "sort_by_priority",    _sortByPriority );
+    conf.getIfSet( "sort_by_distance",    _sortByDistance);
     conf.getIfSet( "snap_to_pixel",       _snapToPixel );
     conf.getIfSet( "max_objects",         _maxObjects );
+    conf.getIfSet( "render_order",        _renderBinNumber );
 }
 
 Config
@@ -183,12 +190,37 @@ ScreenSpaceLayoutOptions::getConfig() const
     conf.addIfSet( "in_animation_time",   _inAnimTime );
     conf.addIfSet( "out_animation_time",  _outAnimTime );
     conf.addIfSet( "sort_by_priority",    _sortByPriority );
+    conf.addIfSet( "sort_by_distance",    _sortByDistance);
     conf.addIfSet( "snap_to_pixel",       _snapToPixel );
     conf.addIfSet( "max_objects",         _maxObjects );
+    conf.addIfSet( "render_order",        _renderBinNumber );
     return conf;
 }
 
 //----------------------------------------------------------------------------
+
+template<typename T>
+struct LCGIterator
+{
+    T& _vec;
+    unsigned _seed;
+    unsigned _n;
+    unsigned _index;
+    unsigned _a, _c;
+    LCGIterator(T& vec) : _vec(vec), _seed(0u), _index(0u) {
+        _n = vec.size();
+        _a = _n+1;
+        _c = 15487457u; // a very large prime
+    }
+    bool hasMore() const { 
+        return _index < _n;
+    }
+    const typename T::value_type& next() {
+        _seed = (_a*_seed + _c) % _n;
+        _index++;
+        return _vec[_seed];
+    }
+};
 
 /**
  * A custom RenderLeaf sorting algorithm for decluttering objects.
@@ -229,19 +261,21 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
     // Sorts the bin. This runs in the CULL thread after the CULL traversal has completed.
     void sortImplementation(osgUtil::RenderBin* bin)
     {
+        const ScreenSpaceLayoutOptions& options = _context->_options;
+
         osgUtil::RenderBin::RenderLeafList& leaves = bin->getRenderLeafList();
+        
+        bin->copyLeavesFromStateGraphListToRenderLeafList();
 
         // first, sort the leaves:
         if ( _customSortFunctor && s_declutteringEnabledGlobally )
         {
             // if there's a custom sorting function installed
-            bin->copyLeavesFromStateGraphListToRenderLeafList();
             std::sort( leaves.begin(), leaves.end(), SortContainer( *_customSortFunctor ) );
         }
-        else
+        else if (options.sortByDistance() == true)
         {
             // default behavior:
-            bin->copyLeavesFromStateGraphListToRenderLeafList();
             std::sort( leaves.begin(), leaves.end(), SortFrontToBackPreservingGeodeTraversalOrder() );
         }
 
@@ -250,7 +284,13 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
             return;
 
         // access the view-specific persistent data:
-        osg::Camera* cam   = bin->getStage()->getCamera();                
+        osg::Camera* cam = bin->getStage()->getCamera();
+
+        // bail out if this camera is a master camera with no GC
+        // (e.g., in a multi-screen layout)
+        if (cam == NULL || cam->getGraphicsContext() == NULL)
+            return;
+
         PerCamInfo& local = _perCam.get( cam );
 
         osg::Timer_t now = osg::Timer::instance()->tick();
@@ -281,16 +321,19 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
         osg::Matrix refCamScaleMat;
         osg::Matrix refWindowMatrix = windowMatrix;
 
-        if ( cam->isRenderToTextureCamera() )
+        // If the camera is actually an RTT slave camera, it's our picker, and we need to
+        // adjust the scale to match it.
+        if (cam->isRenderToTextureCamera() &&
+            cam->getView() &&
+            cam->getView()->getCamera() &&
+            cam->getView()->getCamera() != cam)
+            //cam->getView()->findSlaveIndexForCamera(cam) < cam->getView()->getNumSlaves())
         {
-            osg::Camera* refCam = dynamic_cast<osg::Camera*>(cam->getUserData());
-            if ( refCam )
-            {
-                const osg::Viewport* refVP = refCam->getViewport();
-                refCamScale.set( vp->width() / refVP->width(), vp->height() / refVP->height(), 1.0 );
-                refCamScaleMat.makeScale( refCamScale );
-                refWindowMatrix = refVP->computeWindowMatrix();
-            }
+            osg::Camera* parentCam = cam->getView()->getCamera();
+            const osg::Viewport* refVP = parentCam->getViewport();
+            refCamScale.set( vp->width() / refVP->width(), vp->height() / refVP->height(), 1.0 );
+            refCamScaleMat.makeScale( refCamScale );
+            refWindowMatrix = refVP->computeWindowMatrix();
         }
 
         // Track the parent nodes of drawables that are obscured (and culled). Drawables
@@ -298,7 +341,6 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
         // will be culled as a group.
         std::set<const osg::Node*> culledParents;
 
-        const ScreenSpaceLayoutOptions& options = _context->_options;
         unsigned limit = *options.maxObjects();
 
         bool snapToPixel = options.snapToPixel() == true;
@@ -307,14 +349,18 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
         camVPW.postMult(cam->getViewMatrix());
         camVPW.postMult(cam->getProjectionMatrix());
         camVPW.postMult(refWindowMatrix);
-        //if (cam->getViewport())
-        //    camVPW.postMult(cam->getViewport()->computeWindowMatrix());
+
+        // has the camera moved?
+        bool camChanged = camVPW != local._lastCamVPW;
+        local._lastCamVPW = camVPW;
 
         // Go through each leaf and test for visibility.
         // Enforce the "max objects" limit along the way.
         for(osgUtil::RenderBin::RenderLeafList::iterator i = leaves.begin(); 
             i != leaves.end() && local._passed.size() < limit; 
             ++i )
+        //LCGIterator<osgUtil::RenderBin::RenderLeafList> i(leaves);
+        //while (i.hasMore() && local._passed.size() < limit)
         {
             bool visible = true;
 
@@ -404,23 +450,14 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
 
             // if snapping is enabled, only snap when the camera stops moving.
             bool quantize = snapToPixel;
-            if ( quantize )
+            if ( quantize && !camChanged )
             {
-                DrawableInfo& info = local._memory[drawable];
-                
-                if ( info._lastXY.x() == winPos.x() && info._lastXY.y() == winPos.y() )
-                {
-                    // Quanitize the window draw coordinates to mitigate text rendering filtering anomalies.
-                    // Drawing text glyphs on pixel boundaries mitigates aliasing.
-                    // Adding 0.5 will cause the GPU to sample the glyph texels exactly on center.
-                    winPos.x() = floor(winPos.x()) + 0.5;
-                    winPos.y() = floor(winPos.y()) + 0.5;
-                }
-                else
-                {
-                    info._lastXY.set( winPos.x(), winPos.y() );
-                }
-            }            
+                // Quanitize the window draw coordinates to mitigate text rendering filtering anomalies.
+                // Drawing text glyphs on pixel boundaries mitigates aliasing.
+                // Adding 0.5 will cause the GPU to sample the glyph texels exactly on center.
+                winPos.x() = floor(winPos.x()) + 0.5;
+                winPos.y() = floor(winPos.y()) + 0.5;
+            }
 
             if ( s_declutteringEnabledGlobally )
             {
@@ -503,9 +540,8 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
 
         // copy the final draw list back into the bin, rejecting any leaves whose parents
         // are in the cull list.
-
         if ( s_declutteringEnabledGlobally )
-        {
+        { 
             leaves.clear();
             for( osgUtil::RenderBin::RenderLeafList::const_iterator i=local._passed.begin(); i != local._passed.end(); ++i )
             {
@@ -540,7 +576,9 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
                     }
 
                     leaf->_depth = info._lastAlpha;
-                    leaves.push_back( leaf );                
+                    leaves.push_back( leaf );
+
+                    info._frame++;
                 }
                 else
                 {
@@ -561,20 +599,29 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
                 bool isBbox = dynamic_cast<const osgEarth::Annotation::BboxDrawable*>(drawable) != 0L;
                 bool fullyOut = true;
 
-                if ( info._lastScale != *options.minAnimationScale() )
+                if (info._frame > 0u)
                 {
-                    fullyOut = false;
-                    info._lastScale -= elapsedSeconds / std::max(*options.outAnimationTime(), 0.001f);
-                    if ( info._lastScale < *options.minAnimationScale() )
-                        info._lastScale = *options.minAnimationScale();
-                }
+                    if ( info._lastScale != *options.minAnimationScale() )
+                    {
+                        fullyOut = false;
+                        info._lastScale -= elapsedSeconds / std::max(*options.outAnimationTime(), 0.001f);
+                        if ( info._lastScale < *options.minAnimationScale() )
+                            info._lastScale = *options.minAnimationScale();
+                    }
 
-                if ( info._lastAlpha != *options.minAnimationAlpha() )
+                    if ( info._lastAlpha != *options.minAnimationAlpha() )
+                    {
+                        fullyOut = false;
+                        info._lastAlpha -= elapsedSeconds / std::max(*options.outAnimationTime(), 0.001f);
+                        if ( info._lastAlpha < *options.minAnimationAlpha() )
+                            info._lastAlpha = *options.minAnimationAlpha();
+                    }
+                }
+                else
                 {
-                    fullyOut = false;
-                    info._lastAlpha -= elapsedSeconds / std::max(*options.outAnimationTime(), 0.001f);
-                    if ( info._lastAlpha < *options.minAnimationAlpha() )
-                        info._lastAlpha = *options.minAnimationAlpha();
+                    // prevent first-frame "pop out"
+                    info._lastScale = options.minAnimationScale().get();
+                    info._lastAlpha = options.minAnimationAlpha().get();
                 }
 
                 leaf->_depth = info._lastAlpha;
@@ -590,6 +637,8 @@ struct /*internal*/ DeclutterSort : public osgUtil::RenderBin::SortCallback
                             leaf->_modelview->preMult( osg::Matrix::scale(info._lastScale,info._lastScale,1) );
                     }
                 }
+
+                info._frame++;
             }
         }
     }
@@ -654,6 +703,7 @@ namespace
 
             // render the list
             osgUtil::RenderBin::RenderLeafList& leaves = bin->getRenderLeafList();
+
             for(osgUtil::RenderBin::RenderLeafList::reverse_iterator rlitr = leaves.rbegin();
                 rlitr!= leaves.rend();
                 ++rlitr)
@@ -817,15 +867,17 @@ bool osgEarthScreenSpaceLayoutRenderBin::_vpInstalled = false;
 //----------------------------------------------------------------------------
 
 void
-ScreenSpaceLayout::activate(osg::StateSet* stateSet, int binNum)
+ScreenSpaceLayout::activate(osg::StateSet* stateSet) //, int binNum)
 {
     if ( stateSet )
     {
+        int binNum = getOptions().renderOrder().get();
+
         // the OVERRIDE prevents subsequent statesets from disabling the layout bin
         stateSet->setRenderBinDetails(
             binNum,
             OSGEARTH_SCREEN_SPACE_LAYOUT_BIN,
-            osg::StateSet::OVERRIDE_RENDERBIN_DETAILS);
+            osg::StateSet::OVERRIDE_PROTECTED_RENDERBIN_DETAILS);
 
         // Force a single shared layout bin per render stage
         stateSet->setNestRenderBins( false );

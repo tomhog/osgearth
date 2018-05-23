@@ -71,7 +71,11 @@ namespace osgEarth { namespace Features
         virtual ~FeatureFilter();
     };
 
-    typedef std::list< osg::ref_ptr<FeatureFilter> > FeatureFilterList;
+    //! Vector of feature filters (ref counted)
+    class FeatureFilterChain : public osg::Referenced,
+                               public osg::MixinVector<osg::ref_ptr<FeatureFilter> >
+    {
+    };
 
     /**
      * A Factory that can create a FeatureFilter from a Config
@@ -132,10 +136,20 @@ namespace osgEarth { namespace Features
     };
 
 #define OSGEARTH_REGISTER_FEATUREFILTER( CLASSNAME )\
+    extern "C" void osgearth_featurefilter_##KEY(void) {} \
     static osgEarth::Features::RegisterFeatureFilterProxy<CLASSNAME> s_osgEarthRegisterFeatureFilterProxy_##CLASSNAME;
+    
+#define USE_OSGEARTH_FEATUREFILTER( KEY ) \
+    extern "C" void osgearth_featurefilter_##KEY(void); \
+    static osgDB::PluginFunctionProxy proxy_osgearth_featurefilter_##KEY(osgearth_featurefilter_##KEY);
 
 #define OSGEARTH_REGISTER_SIMPLE_FEATUREFILTER( KEY, CLASSNAME)\
+    extern "C" void osgearth_simple_featurefilter_##KEY(void) {} \
     static osgEarth::Features::RegisterFeatureFilterProxy< osgEarth::Features::SimpleFeatureFilterFactory<CLASSNAME> > s_osgEarthRegisterFeatureFilterProxy_##CLASSNAME##KEY(new osgEarth::Features::SimpleFeatureFilterFactory<CLASSNAME>(#KEY));
+    
+#define USE_OSGEARTH_SIMPLE_FEATUREFILTER( KEY ) \
+    extern "C" void osgearth_simple_featurefilter_##KEY(void); \
+    static osgDB::PluginFunctionProxy proxy_osgearth_simple_featurefilter_##KEY(osgearth_simple_featurefilter_##KEY);
     
 
     //--------------------------------------------------------------------
@@ -144,20 +158,6 @@ namespace osgEarth { namespace Features
     {
     protected:
         const ConfigOptions& getConfigOptions(const osgDB::Options* options) const;
-    };
-
-    //--------------------------------------------------------------------
-
-    template<typename T>
-    class TemplateFeatureFilter : public Filter, public T
-    {
-    public:
-        FilterContext push( FeatureList& input, FilterContext& context ) {
-            for( FeatureList::iterator i = input.begin(); i != input.end(); ++i ) {
-                T::operator()( i->get(), context );
-            }
-            return context;
-        }
     };
 
     /**
@@ -213,7 +213,6 @@ namespace osgEarth { namespace Features
             const osg::Matrixd&            world2local,
             bool                           toECEF );
 
-        void applyLineSymbology(osg::StateSet*, const class LineSymbol*);
         void applyPointSymbology(osg::StateSet*, const class PointSymbol*);
 
         osg::Matrixd _world2local, _local2world;   // for coordinate localization

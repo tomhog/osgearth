@@ -21,7 +21,8 @@
 */
 #include <osgEarthUtil/LinearLineOfSight>
 #include <osgEarth/TerrainEngineNode>
-#include <osgEarth/DPLineSegmentIntersector>
+#include <osgEarth/GLUtils>
+#include <osgUtil/LineSegmentIntersector>
 #include <osgSim/LineOfSight>
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
@@ -39,9 +40,9 @@ namespace
         {
         }
 
-        virtual void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* terrain, TerrainCallbackContext&)
+        virtual void onTileAdded(const osgEarth::TileKey& tileKey, osg::Node* graph, TerrainCallbackContext&)
         {
-            _los->terrainChanged( tileKey, terrain );
+            _los->terrainChanged( tileKey, graph );
         }
 
     private:
@@ -254,12 +255,12 @@ LinearLineOfSightNode::compute(osg::Node* node, bool backgroundThread)
       }
 
 
-      DPLineSegmentIntersector* lsi = new DPLineSegmentIntersector(_startWorld, _endWorld);
+      osgUtil::LineSegmentIntersector* lsi = new osgUtil::LineSegmentIntersector(_startWorld, _endWorld);
       osgUtil::IntersectionVisitor iv( lsi );
 
       node->accept( iv );
 
-      DPLineSegmentIntersector::Intersections& hits = lsi->getIntersections();
+      osgUtil::LineSegmentIntersector::Intersections& hits = lsi->getIntersections();
       if ( hits.size() > 0 )
       {
           _hasLOS = false;
@@ -294,11 +295,10 @@ LinearLineOfSightNode::draw(bool backgroundThread)
         verts->reserve(4);
         geometry->setVertexArray( verts );
 
-        osg::Vec4Array* colors = new osg::Vec4Array();
+        osg::Vec4Array* colors = new osg::Vec4Array(osg::Array::BIND_PER_VERTEX);
         colors->reserve( 4 );
 
         geometry->setColorArray( colors );
-        geometry->setColorBinding(osg::Geometry::BIND_PER_VERTEX);
 
         if (_hasLOS)
         {
@@ -339,7 +339,7 @@ LinearLineOfSightNode::draw(bool backgroundThread)
         mt->setMatrix(osg::Matrixd::translate(_startWorld));
         mt->addChild(geode);  
 
-        getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+        GLUtils::setLighting(getOrCreateStateSet(), osg::StateAttribute::OFF);
     }
 
 
@@ -442,7 +442,7 @@ LineOfSightTether::operator()(osg::Node* node, osg::NodeVisitor* nv)
         {
             if (_startNode.valid())
             {
-                osg::Vec3d worldStart = getNodeCenter(_startNode);
+                osg::Vec3d worldStart = getNodeCenter(_startNode.get());
 
                 //Convert to mappoint since that is what LOS expects
                 GeoPoint mapStart;
@@ -452,7 +452,7 @@ LineOfSightTether::operator()(osg::Node* node, osg::NodeVisitor* nv)
 
             if (_endNode.valid())
             {
-                osg::Vec3d worldEnd = getNodeCenter( _endNode );
+                osg::Vec3d worldEnd = getNodeCenter( _endNode.get() );
 
                 //Convert to mappoint since that is what LOS expects
                 GeoPoint mapEnd;
@@ -517,13 +517,13 @@ LinearLineOfSightEditor::LinearLineOfSightEditor(LinearLineOfSightNode* los):
 _los(los)
 {
     _startDragger  = new osgEarth::Annotation::SphereDragger( _los->getMapNode());
-    _startDragger->addPositionChangedCallback(new LOSDraggerCallback(_los, true ) );    
+    _startDragger->addPositionChangedCallback(new LOSDraggerCallback(_los.get(), true ) );    
     static_cast<osgEarth::Annotation::SphereDragger*>(_startDragger)->setColor(osg::Vec4(0,0,1,0));
     addChild(_startDragger);
 
     _endDragger = new osgEarth::Annotation::SphereDragger( _los->getMapNode());
     static_cast<osgEarth::Annotation::SphereDragger*>(_endDragger)->setColor(osg::Vec4(0,0,1,0));
-    _endDragger->addPositionChangedCallback(new LOSDraggerCallback(_los, false ) );
+    _endDragger->addPositionChangedCallback(new LOSDraggerCallback(_los.get(), false ) );
 
     addChild(_endDragger);
 

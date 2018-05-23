@@ -119,14 +119,14 @@ into various locations in the shader pipeline.
 For example, let's use user functions to create a simple "haze" effect::
 
     // haze_vertex:
-    varying vec3 v_pos;
+    out vec3 v_pos;
     void setup_haze(inout vec4 vertexView)
     {
         v_pos = vertexView.xyz;
     }
     
     // haze_fragment:
-    varying vec3 v_pos;
+    in vec3 v_pos;
     void apply_haze(inout vec4 color)
     {
         float dist = clamp( length(v_pos)/10000000.0, 0, 0.75 );
@@ -167,7 +167,7 @@ You can alter the vertex, but you *must* leave it in the same space.
 
 :MODEL:  Vertex is the raw, untransformed values from the geometry.
 :VIEW:   Vertex is relative to the eyepoint, which lies at the origin (0,0,0) and 
-         points down the -Z axis. In VIEW space, the orginal vertex has been
+         points down the -Z axis. In VIEW space, the original vertex has been
          transformed by ``gl_ModelViewMatrix``.
 :CLIP:   Post-projected clip space. CLIP space lies in the [-w..w] range along all
          three axis, and is the result of transforming the original vertex by

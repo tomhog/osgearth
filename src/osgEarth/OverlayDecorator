@@ -41,7 +41,7 @@ namespace osgEarth
     /**
      * Overlays geometry onto the terrain using various techniques.
      */
-    class OSGEARTH_EXPORT OverlayDecorator : public TerrainDecorator
+    class OSGEARTH_EXPORT OverlayDecorator : public osg::Group
     {
     public:
         OverlayDecorator();
@@ -89,9 +89,10 @@ namespace osgEarth
         void setMaximumHeight(double value) { _maxHeight = value; }
         double getMaximumHeight() const { return _maxHeight; }
 
-    public: // TerrainDecorator
-        virtual void onInstall( TerrainEngineNode* engine );
-        virtual void onUninstall( TerrainEngineNode* engine );
+        /**
+         * Initializes the decorator with a terrain engine
+         */
+        void setTerrainEngine(TerrainEngineNode*);
 
     public: // osg::Node
         void traverse( osg::NodeVisitor& nv );
@@ -116,9 +117,10 @@ namespace osgEarth
             osg::StateSet*                _terrainStateSet;  // same object as in PerViewData (shared across techniques)
             osg::ref_ptr<osg::Referenced> _techniqueData;    // technique sets this if needed
             const double*                 _horizonDistance;  // points to the PVD horizon distance
-            TextureCompositor*            _terrainResources; // for accessing image units
+            TerrainResources*             _terrainResources; // for accessing image units
             osg::Vec3d                    _eyeWorld;         // eyepoint in world coords
             osgShadow::ConvexPolyhedron   _visibleFrustumPH; // polyhedron representing the frustum
+            osg::ref_ptr<osg::Uniform>    _rttToPrimaryMatrixUniform; // xform from RTT cam to primary cam
         };
 
         // One of these per view (camera). The terrain state set
@@ -136,7 +138,6 @@ namespace osgEarth
         optional<int>                 _explicitTextureUnit;
         optional<int>                 _textureUnit;
         optional<int>                 _textureSize;
-        bool                          _useShaders;
         bool                          _isGeocentric;
         unsigned                      _rttTraversalMask;
         double                        _maxHeight;
@@ -199,6 +200,8 @@ namespace osgEarth
 
         virtual const osg::BoundingSphere& getBound(
             OverlayDecorator::TechRTTParams& params) const { return params._group->getBound(); }
+
+        virtual bool optimizeToVisibleBound() const { return false; }
 
         virtual void onInstall( TerrainEngineNode* engine ) { }
 

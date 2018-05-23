@@ -141,7 +141,7 @@ private slots:
           std::string fileName = osgDB::getSimpleFileName(filePath.toStdString());
           osg::ref_ptr<osgEarth::ImageLayer> newLayer = new osgEarth::ImageLayer(osgEarth::ImageLayerOptions(fileName, layerOpt));
 
-          _manager->map()->addImageLayer(newLayer.get());
+          _manager->map()->addLayer(newLayer.get());
         }
       }
 
@@ -171,14 +171,16 @@ private slots:
             pathSet = true;
           }
 
-          osgEarth::Drivers::GDALOptions layerOpt;
-          layerOpt.url() = osgEarth::URI(filePath.toStdString());
+          osgEarth::Drivers::GDALOptions gdal;
+          gdal.url() = osgEarth::URI(filePath.toStdString());
+          std::string fileName = osgDB::getSimpleFileName(filePath.toStdString());
+
+          osgEarth::ElevationLayerOptions layerOpt(fileName, gdal);
           layerOpt.tileSize() = 15;
           
-          std::string fileName = osgDB::getSimpleFileName(filePath.toStdString());
-          osg::ref_ptr<osgEarth::ElevationLayer> newLayer = new osgEarth::ElevationLayer(osgEarth::ElevationLayerOptions(fileName, layerOpt));
+          osg::ref_ptr<osgEarth::ElevationLayer> newLayer = new osgEarth::ElevationLayer(layerOpt);
 
-          _manager->map()->addElevationLayer(newLayer.get());
+          _manager->map()->addLayer(newLayer.get());
         }
       }
 
@@ -304,17 +306,17 @@ private:
       if (_controller)
       {
         // create a second catalog widget for viewpoints
-        osgEarth::QtGui::MapCatalogWidget* vpCatalog = new osgEarth::QtGui::MapCatalogWidget(_manager, osgEarth::QtGui::MapCatalogWidget::VIEWPOINTS);
+        osgEarth::QtGui::MapCatalogWidget* vpCatalog = new osgEarth::QtGui::MapCatalogWidget(_manager.get(), osgEarth::QtGui::MapCatalogWidget::VIEWPOINTS);
         vpCatalog->setActiveViews(_views);
         _vpDock->setWidget(vpCatalog);
 
         // create layer manager widget and add as a docked widget on the right
-        osgEarth::QtGui::LayerManagerWidget* elevLayerManager = new osgEarth::QtGui::LayerManagerWidget(_manager, osgEarth::QtGui::LayerManagerWidget::ELEVATION_LAYERS);
+        osgEarth::QtGui::LayerManagerWidget* elevLayerManager = new osgEarth::QtGui::LayerManagerWidget(_manager.get(), osgEarth::QtGui::LayerManagerWidget::ELEVATION_LAYERS);
         elevLayerManager->setActiveViews(_views);
         _elevLayersDock->setWidget(elevLayerManager);
 
         // create layer manager widget and add as a docked widget on the right
-        osgEarth::QtGui::LayerManagerWidget* imgLayerManager = new osgEarth::QtGui::LayerManagerWidget(_manager, osgEarth::QtGui::LayerManagerWidget::IMAGE_LAYERS);
+        osgEarth::QtGui::LayerManagerWidget* imgLayerManager = new osgEarth::QtGui::LayerManagerWidget(_manager.get(), osgEarth::QtGui::LayerManagerWidget::IMAGE_LAYERS);
         imgLayerManager->setActiveViews(_views);
         _imgLayersDock->setWidget(imgLayerManager);
       }

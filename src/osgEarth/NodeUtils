@@ -104,7 +104,7 @@ namespace osgEarth
         /** dtor */
         virtual ~PrimitiveSetTypeCounter() { }
 
-        void apply(class osg::Geode&);
+        void apply(class osg::Drawable&);
 
         unsigned _point;
         unsigned _line;
@@ -242,6 +242,16 @@ namespace osgEarth
         return node && node->getNumParents() > 0 ? findTopOfGraph(node->getParent(0)) : node;
     }
 
+    /** Finds a typed node in a node visitor's node path */
+    template<typename T>
+    T* findInNodePath(osg::NodeVisitor& nv) {
+        for (osg::NodePath::iterator i = nv.getNodePath().begin(); i != nv.getNodePath().end(); ++i) {
+            T* node = dynamic_cast<T*>(*i);
+            if (node) return node;
+        }
+        return 0L;
+    }
+
     /**
      * Replace one group with another
      */
@@ -291,6 +301,24 @@ namespace osgEarth
                     parent->removeChild( existingChild );
                     parent->addChild( newParent );
                 }
+            }
+        }
+    }
+
+    /** Remove a group from the middle of a scene graph */
+    inline void removeGroup(osg::Group* group)
+    {
+        if (group)
+        {
+            osg::ref_ptr<osg::Group> g = group;
+            while (g->getNumParents() > 0)
+            {
+                osg::Group* parent = group->getParent(group->getNumParents()-1);
+                for (unsigned c = 0; c < group->getNumChildren(); ++c)
+                {
+                    parent->addChild(group->getChild(c));
+                }
+                parent->removeChild(group);
             }
         }
     }
@@ -361,8 +389,9 @@ namespace osgEarth
 #define ADJUST_UPDATE_TRAV_COUNT( NODE, DELTA ) \
     { \
         int oldCount = NODE ->getNumChildrenRequiringUpdateTraversal(); \
-        if ( oldCount + DELTA >= 0 ) \
+        if ( oldCount + DELTA >= 0 ) { \
             NODE ->setNumChildrenRequiringUpdateTraversal( (unsigned int)(oldCount + DELTA ) ); \
+        } \
     }
 
     /**

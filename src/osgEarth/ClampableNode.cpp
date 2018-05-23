@@ -22,76 +22,144 @@
 #include <osgEarth/DepthOffset>
 #include <osgEarth/OverlayDecorator>
 #include <osgEarth/MapNode>
+#include <osgEarth/NodeUtils>
 
 #define LC "[ClampableNode] "
 
 using namespace osgEarth;
 
-//------------------------------------------------------------------------
 
-namespace
+ClampableNode::ClampableNode() :
+_mapNodeUpdateRequested(true)
 {
-    static osg::Group* getTechniqueGroup(MapNode* m)
-    {
-        return m ? m->getOverlayDecorator()->getGroup<ClampingTechnique>() : 0L;
-    }
-}
+    // bounding box culling doesn't work on clampable geometry
+    // since the GPU will be moving verts. So, disable the default culling
+    // for this node so we can out own culling in traverse().
+    setCullingActive(false);
 
-//------------------------------------------------------------------------
-
-ClampableNode::ClampableNode( MapNode* mapNode, bool active ) :
-OverlayNode( mapNode, active, &getTechniqueGroup ),
-_updatePending( false )
-{
-    _adapter.setGraph( this );
-
-    if ( _adapter.isDirty() )
-        _adapter.recalculate();
-}
-
-void
-ClampableNode::setDepthOffsetOptions(const DepthOffsetOptions& options)
-{
-    _adapter.setDepthOffsetOptions(options);
-    if ( _adapter.isDirty() && !_updatePending )
-        scheduleUpdate();
-}
-
-const DepthOffsetOptions&
-ClampableNode::getDepthOffsetOptions() const
-{
-    return _adapter.getDepthOffsetOptions();
-}
-
-void
-ClampableNode::scheduleUpdate()
-{
-    if ( !_updatePending && getDepthOffsetOptions().enabled() == true )
-    {
-        ADJUST_UPDATE_TRAV_COUNT(this, 1);
-        _updatePending = true;
-    }
-}
-
-osg::BoundingSphere
-ClampableNode::computeBound() const
-{
-    static Threading::Mutex s_mutex;
-    {
-        Threading::ScopedMutexLock lock(s_mutex);
-        const_cast<ClampableNode*>(this)->scheduleUpdate();
-    }
-    return OverlayNode::computeBound();
+    // for the mapnode update:
+    ADJUST_UPDATE_TRAV_COUNT(this, +1);
 }
 
 void
 ClampableNode::traverse(osg::NodeVisitor& nv)
 {
-    if ( _updatePending && nv.getVisitorType() == nv.UPDATE_VISITOR )
+    if ( nv.getVisitorType() == nv.CULL_VISITOR )
     {
-        _adapter.recalculate();
-        ADJUST_UPDATE_TRAV_COUNT( this, -1 );
-        _updatePending = false;
+        // Lock a reference to the map node:
+        osg::ref_ptr<MapNode> mapNode;
+        if (_mapNode.lock(mapNode))
+        {
+            osgUtil::CullVisitor* cv = dynamic_cast<osgUtil::CullVisitor*>(&nv);
+
+            // Custom culling. Since clamped geometry can start far outside of the 
+            // view frustum, normal culling won't work. Instead, project the
+            // bounding sphere upwards (along its up vector) on to the center plane
+            // of the view frustum. Then cull it based on the new simulated location.
+            osg::RefMatrix* MV = cv->getModelViewMatrix();
+            osg::Matrix MVinverse;
+            MVinverse.invert(*MV);
+
+            // Actual bounds of geometry:
+            osg::BoundingSphere bs = getBound();
+
+            // First check for simple intersection at the geometry's actual position:
+            bool visible = false; //(cv->isCulled(bs) == false);
+            if (!visible)
+            {
+                // Failing that, project the geometry to the ellipsoid's surface and
+                // expand the radius to account for reasonable elevation changes.
+                // On Earth, elevations of +/- 12000m results in a variance of
+                // 12000/R = ~0.002. Obviously this differs for other planets but
+                // good enough for now
+                const double variance = 0.002;  // * R.
+
+                const SpatialReference* mapSRS = mapNode->getMapSRS();
+                if (mapSRS->isGeographic())
+                {
+                    osg::Vec3d p0 = bs.center();
+                    p0.normalize();
+
+                    // approximate radius under bs.center:
+                    double R = 
+                        osg::absolute(p0.z()) * mapSRS->getEllipsoid()->getRadiusPolar() +
+                        (1.0 - osg::absolute(p0.z())) * mapSRS->getEllipsoid()->getRadiusEquator();
+
+                    // project to mean surface:
+                    bs.center() = p0 * R;
+
+                    // buffer the radius to account for elevation data
+                    bs.radius() = bs.radius() + R*variance;
+                }
+
+                else // projected
+                {
+                    double R = osg::maximum(
+                        mapSRS->getEllipsoid()->getRadiusPolar(),
+                        mapSRS->getEllipsoid()->getRadiusEquator());
+                    
+                    // project to mean surface:
+                    bs.center().z() = 0.0;
+
+                    // buffer the radius to account for elevation data
+                    bs.radius() = bs.radius() + R*variance;
+                }
+
+                // Test against the virtual bounding sphere
+                visible = (cv->isCulled(bs) == false);
+            }
+
+            if (visible)
+            {
+                // Passed the cull test, so put this node in the clamping cull set.
+                ClampingCullSet& cullSet = mapNode->getClampingManager()->get( cv->getCurrentCamera() );
+                cullSet.push( this, cv->getNodePath(), nv.getFrameStamp() );
+            }
+        }
     }
-    OverlayNode::traverse( nv );
+
+    else if (nv.getVisitorType() == nv.UPDATE_VISITOR)
+    {        
+        if (_mapNodeUpdateRequested)
+        {
+            if (_mapNode.valid() == false)
+            {
+                _mapNode = osgEarth::findInNodePath<MapNode>(nv);
+            }
+
+            if (_mapNode.valid())
+            {
+                _mapNodeUpdateRequested = false;
+                ADJUST_UPDATE_TRAV_COUNT(this, -1);
+            }
+        }
+
+        osg::Group::traverse(nv);
+    }
+    else
+    {
+        osg::Group::traverse(nv);
+    }
 }
+
+
+//...........................................................................
+
+#undef  LC
+#define LC "[ClampableNode Serializer] "
+
+#include <osgDB/ObjectWrapper>
+#include <osgDB/InputStream>
+#include <osgDB/OutputStream>
+
+namespace osgEarth { namespace Serializers { namespace ClampableNode
+{
+    REGISTER_OBJECT_WRAPPER(
+        ClampableNode,
+        new osgEarth::ClampableNode,
+        osgEarth::ClampableNode,
+        "osg::Object osg::Node osg::Group osgEarth::ClampableNode")
+    {
+        //nop
+    }
+}}}

@@ -18,10 +18,9 @@
  */
 #include "LandUseTileSource"
 #include <osgEarth/ImageLayer>
-#include <osgEarth/MapFrame>
 #include <osgEarth/Registry>
 #include <osgEarth/ImageUtils>
-#include <osgEarthUtil/SimplexNoise>
+#include <osgEarth/SimplexNoise>
 
 using namespace osgEarth;
 using namespace osgEarth::Splat;
@@ -67,7 +66,7 @@ namespace
             osg::clampBetween( covIn.y() + n1*warp, 0.0f, 1.0f ) );
     }
 
-    float getNoise(osgEarth::Util::SimplexNoise& noiseGen, const osg::Vec2& uv)
+    float getNoise(osgEarth::SimplexNoise& noiseGen, const osg::Vec2& uv)
     {
         // TODO: check that u and v are 0..s and not 0..s-1
         double n = noiseGen.getTiledValue(uv.x(), uv.y());
@@ -154,7 +153,7 @@ namespace
 
         void load(const TileKey& key, ImageLayer* sourceLayer, float sourceWarp, ProgressCallback* progress)
         {
-            if ( sourceLayer->getEnabled() && sourceLayer->getVisible() && sourceLayer->isKeyInRange(key) )
+            if ( sourceLayer->getEnabled() && sourceLayer->getVisible() && sourceLayer->isKeyInLegalRange(key) )
             {
                 for(TileKey k = key; k.valid() && !image.valid(); k = k.createParentKey())
                 {
@@ -246,7 +245,7 @@ LandUseTileSource::createImage(const TileKey&    key,
                     continue;
 
                 if ( !layer.image.valid() )
-                    layer.load(key, _imageLayers[L], _warps[L], progress);
+                    layer.load(key, _imageLayers[L].get(), _warps[L], progress);
 
                 if ( !layer.valid )
                     continue;

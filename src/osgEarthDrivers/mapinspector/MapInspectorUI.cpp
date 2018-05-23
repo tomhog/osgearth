@@ -51,7 +51,7 @@ MapInspectorUI::reinit(MapNode* mapNode)
 
     if ( mapNode )
     {
-        // install annotation group as neccesary
+        // install annotation group as necessary
         if (_annos->getNumParents() == 0 || _annos->getParent(0) != mapNode)
         {
             if ( _annos->getNumParents() > 0 )
@@ -63,22 +63,19 @@ MapInspectorUI::reinit(MapNode* mapNode)
         
         Map* map = mapNode->getMap();
 
-        for(int i=0; i<map->getNumElevationLayers(); ++i)
+        for (unsigned i = 0; i < map->getNumLayers(); ++i)
         {
-            ElevationLayer* layer = map->getElevationLayerAt(i);
-            addTerrainLayer( layer, mapNode );
-        }
+            TerrainLayer* terrainLayer = map->getLayerAt<TerrainLayer>(i);
+            if (terrainLayer)
+            {
+                addTerrainLayer(terrainLayer, mapNode);
+            }
 
-        for(int i=0; i<map->getNumImageLayers(); ++i)
-        {
-            ImageLayer* layer = map->getImageLayerAt(i);
-            addTerrainLayer( layer, mapNode );
-        }
-
-        for(int i=0; i<map->getNumModelLayers(); ++i)
-        {
-            ModelLayer* layer = map->getModelLayerAt(i);
-            addModelLayer( layer, mapNode );
+            ModelLayer* modelLayer = map->getLayerAt<ModelLayer>(i);
+            if (modelLayer)
+            {
+                addModelLayer(modelLayer, mapNode);
+            }
         }
     }
     else
@@ -103,18 +100,25 @@ MapInspectorUI::addTerrainLayer(TerrainLayer* layer,
 
     osg::ref_ptr<MultiGeometry> collection = new MultiGeometry();
 
-    DataExtentList exlist;
-    if (layer->getDataExtents(exlist))
+    const DataExtentList& exlist = layer->getDataExtents();
+    if (!exlist.empty())
     {
         for(DataExtentList::const_iterator i = exlist.begin(); i != exlist.end(); ++i)
         {
             const DataExtent& e = *i;
-            Polygon* p = new Polygon();
-            p->push_back( e.xMin(), e.yMin() );
-            p->push_back( e.xMax(), e.yMin() );
-            p->push_back( e.xMax(), e.yMax() );
-            p->push_back( e.xMin(), e.yMax() );
-            collection->add( p );
+            if (e.isValid())
+            {
+                Polygon* p = new Polygon();
+                p->push_back( e.west(), e.south() );
+                p->push_back( e.east(), e.south() );
+                p->push_back( e.east(), e.north() );
+                p->push_back( e.west(), e.north() );
+                collection->add( p );
+            }
+            else
+            {
+                OE_WARN << LC << "Invalid data extent: " << e.toString() << std::endl;
+            }
         }
 
         // poly:

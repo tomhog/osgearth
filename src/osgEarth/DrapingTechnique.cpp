@@ -27,6 +27,7 @@
 #include <osgEarth/VirtualProgram>
 #include <osgEarth/Shaders>
 #include <osgEarth/CullingUtils>
+#include <osgEarth/Lighting>
 
 #include <osg/BlendFunc>
 #include <osg/TexGen>
@@ -54,7 +55,7 @@ namespace
     class DrapingCamera : public osg::Camera
     {
     public:
-        DrapingCamera() : osg::Camera(), _camera(0L)
+        DrapingCamera(DrapingManager& dm) : osg::Camera(), _dm(dm), _camera(0L)
         {
             setCullingActive( false );
         }
@@ -68,13 +69,14 @@ namespace
         }
 
         void traverse(osg::NodeVisitor& nv)
-        {            
-            DrapingCullSet& cullSet = DrapingCullSet::get(_camera);
+        {
+            DrapingCullSet& cullSet = _dm.get(_camera);
             cullSet.accept( nv );
         }
 
     protected:
         virtual ~DrapingCamera() { }
+        DrapingManager& _dm;
         const osg::Camera* _camera;
     };
 
@@ -133,9 +135,7 @@ namespace
 
     // Experimental.
     void optimizeProjectionMatrix(OverlayDecorator::TechRTTParams& params, double maxFarNearRatio)
-    {
-        LocalPerViewData& local = *static_cast<LocalPerViewData*>(params._techniqueData.get());
-        
+    {        
         // t0,t1,t2,t3 will form a polygon that tightly fits the
         // main camera's frustum. Texture near the camera will get
         // more resolution then texture far away.
@@ -346,56 +346,43 @@ DrapingTechnique::hasData(OverlayDecorator::TechRTTParams& params) const
     return getBound(params).valid();
 }
 
-#if OSG_MIN_VERSION_REQUIRED(3,4,0)
-
-// Customized texture class will disable texture filtering when rendering under a pick camera.
-class DrapingTexture : public osg::Texture2D
+namespace
 {
-public:
-    virtual void apply(osg::State& state) const {
-        osg::State::UniformMap::const_iterator i = state.getUniformMap().find("oe_isPickCamera");
-        bool isPickCamera = false;
-        if (i != state.getUniformMap().end())
+    // Customized texture class will disable texture filtering when rendering under a pick camera.
+    class DrapingTexture : public osg::Texture2D
+    {
+    public:
+        virtual void apply(osg::State& state) const
         {
-            if (!i->second.uniformVec.empty())
+            const osg::StateSet::DefineList& defines = state.getDefineMap().currentDefines;
+            if (defines.find("OE_IS_PICK_CAMERA") != defines.end())
             {
-                i->second.uniformVec.back().first->get(isPickCamera);
+                FilterMode minFilter = _min_filter;
+                FilterMode magFilter = _mag_filter;
+                DrapingTexture* ncThis = const_cast<DrapingTexture*>(this);
+                ncThis->_min_filter = NEAREST;
+                ncThis->_mag_filter = NEAREST;
+                ncThis->dirtyTextureParameters();
+                osg::Texture2D::apply(state);
+                ncThis->_min_filter = minFilter;
+                ncThis->_mag_filter = magFilter;
+                ncThis->dirtyTextureParameters();
+            }
+            else
+            {
+                osg::Texture2D::apply(state);
             }
         }
-
-        if (isPickCamera)
-        {
-            FilterMode minFilter = _min_filter;
-            FilterMode magFilter = _mag_filter;
-            DrapingTexture* ncThis = const_cast<DrapingTexture*>(this);
-            ncThis->_min_filter = NEAREST;
-            ncThis->_mag_filter = NEAREST;
-            ncThis->dirtyTextureParameters();
-            osg::Texture2D::apply(state);
-            ncThis->_min_filter = minFilter;
-            ncThis->_mag_filter = magFilter;
-            ncThis->dirtyTextureParameters();
-        }
-        else
-        {
-            osg::Texture2D::apply(state);
-        }
-    }
-};
-
-#endif
+    };
+}
 
 void
 DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
 {
-    // create the projected texture:
+    OE_INFO << LC << "Using texture size = " << _textureSize.get() << std::endl;
 
-#if OSG_MIN_VERSION_REQUIRED(3,4,0)
+    // create the projected texture:
     osg::Texture2D* projTexture = new DrapingTexture(); 
-#else 
-    osg::Texture2D* projTexture = new osg::Texture2D();
-    OE_WARN << LC << "RTT Picking of draped geometry may not work propertly under OSG < 3.4" << std::endl;
-#endif
 
     projTexture->setTextureSize( *_textureSize, *_textureSize );
     projTexture->setInternalFormat( GL_RGBA );
@@ -409,7 +396,7 @@ DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
     projTexture->setBorderColor( osg::Vec4(0,0,0,0) );
 
     // set up the RTT camera:
-    params._rttCamera = new DrapingCamera(); //new osg::Camera();
+    params._rttCamera = new DrapingCamera(_drapingManager);
     params._rttCamera->setClearColor( osg::Vec4f(0,0,0,0) );
     // this ref frame causes the RTT to inherit its viewpoint from above (in order to properly
     // process PagedLOD's etc. -- it doesn't affect the perspective of the RTT camera though)
@@ -430,7 +417,7 @@ DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
         // a PBUFFER_RTT impl
         if ( Registry::capabilities().supportsDepthPackedStencilBuffer() )
         {
-#ifdef OSG_GLES2_AVAILABLE 
+#if defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE)
             params._rttCamera->attach( osg::Camera::PACKED_DEPTH_STENCIL_BUFFER, GL_DEPTH24_STENCIL8_EXT );
 #else
             params._rttCamera->attach( osg::Camera::PACKED_DEPTH_STENCIL_BUFFER, GL_DEPTH_STENCIL_EXT );
@@ -449,13 +436,15 @@ DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
         params._rttCamera->setClearMask( GL_COLOR_BUFFER_BIT );
     }
 
+
     // set up a StateSet for the RTT camera.
     osg::StateSet* rttStateSet = params._rttCamera->getOrCreateStateSet();
 
     osg::StateAttribute::OverrideValue forceOff =
         osg::StateAttribute::OFF | osg::StateAttribute::PROTECTED | osg::StateAttribute::OVERRIDE;
 
-    rttStateSet->addUniform( Registry::shaderFactory()->createUniformForGLMode(GL_LIGHTING, forceOff) );
+    rttStateSet->setDefine(OE_LIGHTING_DEFINE, forceOff);
+    //rttStateSet->addUniform( Registry::shaderFactory()->createUniformForGLMode(GL_LIGHTING, forceOff) );
     rttStateSet->setMode( GL_LIGHTING, forceOff );
     
     // activate blending within the RTT camera's FBO
@@ -489,7 +478,7 @@ DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
     // overlay geometry is rendered with no depth testing, and in the order it's found in the
     // scene graph... until further notice.
     rttStateSet->setMode(GL_DEPTH_TEST, 0);
-    rttStateSet->setBinName( "TraversalOrderBin" );
+    rttStateSet->setRenderBinDetails(1, "TraversalOrderBin", osg::StateSet::OVERRIDE_PROTECTED_RENDERBIN_DETAILS );
 
     // add to the terrain stateset, i.e. the stateset that the OverlayDecorator will
     // apply to the terrain before cull-traversing it. This will activate the projective
@@ -512,6 +501,7 @@ DrapingTechnique::setUpCamera(OverlayDecorator::TechRTTParams& params)
         // alpha. We shall see.
         const char* warpClip =
             "#version " GLSL_VERSION_STR "\n"
+            GLSL_DEFAULT_PRECISION_FLOAT "\n"
             "void oe_overlay_warpClip(inout vec4 vclip) { \n"
             "    if (vclip.z > 1.0) vclip.z = vclip.w+1.0; \n"
             "} \n";
@@ -579,13 +569,17 @@ DrapingTechnique::preCullTerrain(OverlayDecorator::TechRTTParams& params,
     if ( !params._rttCamera.valid() && _textureUnit.isSet() )
     {
         setUpCamera( params );
+
+        // We do this so we can detect the RTT's camera's parent for 
+        // things like auto-scaling, picking, and so on.
+        params._rttCamera->setView(cv->getCurrentCamera()->getView());
     }
 }
        
 const osg::BoundingSphere&
 DrapingTechnique::getBound(OverlayDecorator::TechRTTParams& params) const
 {
-    return DrapingCullSet::get(params._mainCamera).getBound();
+    return _drapingManager.get(params._mainCamera).getBound();
 }
 
 void
@@ -712,7 +706,6 @@ DrapingTechnique::onInstall( TerrainEngineNode* engine )
         unsigned maxSize = Registry::capabilities().getMaxFastTextureSize();
         _textureSize.init( osg::minimum( 2048u, maxSize ) );
     }
-    OE_INFO << LC << "Using texture size = " << *_textureSize << std::endl;
 }
 
 void

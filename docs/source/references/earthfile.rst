@@ -16,7 +16,7 @@ The *map* is the top-level element in an earth file.
         <:ref:`elevation <ElevationLayer>`>
         <:ref:`model     <ModelLayer>`>
         <:ref:`mask      <MaskLayer>`>
-        
+        <:ref:`libraries <Libraries>`>
 
 +------------------------+--------------------------------------------------------------------+
 | Property               | Description                                                        |
@@ -117,8 +117,8 @@ These options control the rendering of the terrain surface.
 +-----------------------+--------------------------------------------------------------------+
 | min_tile_range_factor | Determines how close you need to be to a terrain tile for it to    |
 |                       | display. The value is the ratio of a tile's extent to its          |
-|                       | For example, if a tile has a 10km radius, and the MTRF=6, then the |
-|                       | tile will become visible at a range of about 60km.                 |
+|                       | For example, if a tile has a 10km radius, and the MTRF=7, then the |
+|                       | tile will become visible at a range of about 70km.                 |
 +-----------------------+--------------------------------------------------------------------+
 | min_lod               | The lowest level of detail that the terrain is guaranteed to       |
 |                       | display, even if no source data is available at that LOD. The      |
@@ -144,7 +144,7 @@ These options control the rendering of the terrain surface.
 |                       | transparent. This is handy for seeing underground objects.         |
 +-----------------------+--------------------------------------------------------------------+
 | tile_size             | The dimensions of each terrain tile. Each terrain tile will have   |
-|                       | ``tile_size`` X ``tile_size`` verticies.                           |
+|                       | ``tile_size`` X ``tile_size`` vertices.                            |
 +-----------------------+--------------------------------------------------------------------+
 | normalize_edges       | Calculate normal vectors along the edges of terrain tiles so that  |
 |                       | lighting appears smoother from one tile to the next.               |
@@ -520,3 +520,19 @@ color data in a layer before the osgEarth engine composites it into the terrain.
             
 You can chain multiple color filters together. Please refer to :doc:`/references/colorfilters` for
 details on color filters.
+
+.. _Libraries:
+
+Libraries
+~~~~~~~~~
+Preload any libraries.
+
+.. parsed-literal::
+
+    <libraries>a</libraries>
+
+Multiple library names could be listed by using ';' as separator. 
+    
+    <libraries>a;b;c;d;e</libraries>
+
+The libraries are searched in the osg library path and library name needs to follow the osg nodekit library name convention (postfixed with osg library version)

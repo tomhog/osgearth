@@ -151,8 +151,8 @@ public:
             << "&FORMAT=" << ( wmsFormatToUse.empty() ? std::string("image/") + _formatToUse : wmsFormatToUse )
             << "&STYLES=" << _options.style().value()
             << (_options.wmsVersion().value() == "1.3.0" ? "&CRS=" : "&SRS=") << _srsToUse            
-            << "&WIDTH="<< _options.tileSize().value()
-            << "&HEIGHT="<< _options.tileSize().value()
+            << "&WIDTH="<< getPixelsPerTile()
+            << "&HEIGHT=" << getPixelsPerTile()
             << "&BBOX=%lf,%lf,%lf,%lf";
 
         // then the optional keys:
@@ -168,9 +168,9 @@ public:
         osg::ref_ptr<SpatialReference> wms_srs = SpatialReference::create( _srsToUse );
 
         // check for spherical mercator:
-        if ( wms_srs.valid() && wms_srs->isEquivalentTo( osgEarth::Registry::instance()->getGlobalMercatorProfile()->getSRS() ) )
+        if ( wms_srs.valid() && wms_srs->isEquivalentTo( osgEarth::Registry::instance()->getSphericalMercatorProfile()->getSRS() ) )
         {
-            result = osgEarth::Registry::instance()->getGlobalMercatorProfile();
+            result = osgEarth::Registry::instance()->getSphericalMercatorProfile();
         }
         else if (wms_srs.valid() && wms_srs->isEquivalentTo( osgEarth::Registry::instance()->getGlobalGeodeticProfile()->getSRS()))
         {
@@ -185,38 +185,19 @@ public:
             WMSLayer* layer = capabilities->getLayerByName( _options.layers().value() );
             if ( layer )
             {
-                double minx, miny, maxx, maxy;                
-                minx = miny = maxx = maxy = 0;
+                // Get the lat/lon extents
+                double minLon, minLat, maxLon, maxLat;
+                layer->getLatLonExtents(minLon, minLat, maxLon, maxLat);
+                GeoExtent wgs84Extent(SpatialReference::create("wgs84"), minLon, minLat, maxLon, maxLat);
+                getDataExtents().push_back(DataExtent(wgs84Extent, 0));
 
-                //Check to see if the profile is equivalent to global-geodetic
-                if (wms_srs->isGeographic())
-                {
-                    //Try to get the lat lon extents if they are provided
-                    layer->getLatLonExtents(minx, miny, maxx, maxy);
-
-                    //If we still don't have any extents, just default to global geodetic.
-                    if (!result.valid() && minx == 0 && miny == 0 && maxx == 0 && maxy == 0)
-                    {
-                        result = osgEarth::Registry::instance()->getGlobalGeodeticProfile();
-                    }
-                }	
-
-                if (minx == 0 && miny == 0 && maxx == 0 && maxy == 0)
-                {
-                    layer->getExtents(minx, miny, maxx, maxy);
-                }
-
-
+                // If we don't have a profile yet, transform the lat/lon extents to the requested srs and use it as the extents of the profile.
                 if (!result.valid())
                 {
-                    result = Profile::create( _srsToUse, minx, miny, maxx, maxy );
-                }
-
-                //Add the layer extents to the list of valid areas
-                if (minx != 0 || maxx != 0 || miny != 0 || maxy != 0)
-                {
-                    GeoExtent extent( result->getSRS(), minx, miny, maxx, maxy);
-                    getDataExtents().push_back( DataExtent(extent, 0) );
+                    const SpatialReference* srs = SpatialReference::create(_srsToUse);
+                    GeoExtent nativeExtent;
+                    wgs84Extent.transform(srs, nativeExtent);
+                    result = Profile::create(srs, nativeExtent.xMin(), nativeExtent.yMin(), nativeExtent.xMax(), nativeExtent.yMax());
                 }
             }
         }
@@ -225,7 +206,7 @@ public:
         if ( !result.valid() && wms_srs->isGeographic())
         {
             result = osgEarth::Registry::instance()->getGlobalGeodeticProfile();
-        }
+        }    
 
         // JPL uses an experimental interface called TileService -- ping to see if that's what
         // we are trying to read:
@@ -246,8 +227,8 @@ public:
                 _formatToUse,
                 _options.style().value(),
                 _srsToUse,
-                _options.tileSize().value(),
-                _options.tileSize().value(),
+                getPixelsPerTile(),
+                getPixelsPerTile(),
                 patterns );
 
             if (patterns.size() > 0)
@@ -448,7 +429,7 @@ public:
             return ImageUtils::createEmptyImage();
         }
 
-        _sequenceCache.insert( seq );
+        _sequenceCache.insert( seq.get() );
         return seq.release();
     }
 
@@ -490,11 +471,6 @@ public:
             uri = replaceIn(uri, " ", "%20");
 
         return uri;
-    }
-
-    virtual int getPixelsPerTile() const
-    {
-        return _options.tileSize().value();
     }
 
     virtual std::string getExtension()  const 

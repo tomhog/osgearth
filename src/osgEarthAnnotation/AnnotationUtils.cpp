@@ -30,6 +30,7 @@
 #include <osgEarth/CullingUtils>
 #include <osgEarth/DrapeableNode>
 #include <osgEarth/ClampableNode>
+#include <osgEarth/GLUtils>
 
 #include <osgText/Text>
 #include <osg/Depth>
@@ -85,6 +86,20 @@ AnnotationUtils::convertTextSymbolEncoding (const TextSymbol::Encoding encoding)
     }
 
     return text_encoding;
+}
+
+namespace
+{
+    static int nextPowerOf2(int x)
+    {
+        --x;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        return x+1;
+    }
 }
 
 osg::Drawable*
@@ -184,19 +199,19 @@ AnnotationUtils::createTextDrawable(const std::string& text,
 
     t->setAutoRotateToScreen(false);
 
-#if OSG_MIN_VERSION_REQUIRED(3,4,0)
     t->setCullingActive(false);
-#endif
 
     t->setCharacterSizeMode( osgText::Text::OBJECT_COORDS );
-    float size = symbol && symbol->size().isSet() ? (float)(symbol->size()->eval()) : 16.0f;
-    t->setCharacterSize( size );
+    
+    float size = symbol && symbol->size().isSet() ? (float)(symbol->size()->eval()) : 16.0f;    
+
+    t->setCharacterSize( size * Registry::instance()->getDevicePixelRatio() );
     t->setColor( symbol && symbol->fill().isSet() ? symbol->fill()->color() : Color::White );
 
-    osgText::Font* font = 0L;
+    osg::ref_ptr<osgText::Font> font;
     if ( symbol && symbol->font().isSet() )
     {
-        font = osgText::readFontFile( *symbol->font() );
+        font = osgText::readRefFontFile( *symbol->font() );
     }
     if ( !font )
         font = Registry::instance()->getDefaultFont();
@@ -205,15 +220,29 @@ AnnotationUtils::createTextDrawable(const std::string& text,
     {
         t->setFont( font );
 
+        
+#if OSG_VERSION_LESS_THAN(3,5,8)
         // mitigates mipmapping issues that cause rendering artifacts for some fonts/placement
         font->setGlyphImageMargin( 2 );
+#endif        
     }
 
-    t->setFontResolution( size, size );
-    t->setBackdropOffset( (float)t->getFontWidth() / 256.0f, (float)t->getFontHeight() / 256.0f );
+    // OSG 3.4.1+ adds a program, so we remove it since we're using VPs.
+    t->setStateSet(0L);
 
+#if OSG_VERSION_GREATER_OR_EQUAL(3,6,0)
+    t->setShaderTechnique(osgText::ALL_FEATURES);
+#endif
+
+    float resFactor = 2.0f;
+    int res = nextPowerOf2((int)(size*resFactor));
+    t->setFontResolution(res, res);
+    
     if ( symbol && symbol->halo().isSet() )
     {
+        float offsetFactor = 1.0f / (resFactor*256.0f);
+        t->setBackdropOffset((float)t->getFontWidth() * offsetFactor, (float)t->getFontHeight() * offsetFactor);
+
         t->setBackdropColor( symbol->halo()->color() );
         if ( symbol->haloBackdropType().isSet() )
         {
@@ -270,7 +299,7 @@ AnnotationUtils::createImageGeometry(osg::Image*       image,
     // set up the decoration.
     osg::StateSet* dstate = new osg::StateSet;
     dstate->setMode(GL_CULL_FACE,osg::StateAttribute::OFF);
-    dstate->setMode(GL_LIGHTING,osg::StateAttribute::OFF);
+    GLUtils::setLighting(dstate, osg::StateAttribute::OFF);
     dstate->setTextureAttributeAndModes(0, texture,osg::StateAttribute::ON);
 
     // set up the geoset.
@@ -278,8 +307,8 @@ AnnotationUtils::createImageGeometry(osg::Image*       image,
     geom->setUseVertexBufferObjects(true);
     geom->setStateSet(dstate);
 
-    float s = scale * image->s();
-    float t = scale * image->t();
+    float s = Registry::instance()->getDevicePixelRatio() * scale * image->s();
+    float t = Registry::instance()->getDevicePixelRatio() * scale * image->t();
 
     float x0 = (float)pixelOffset.x() - s/2.0;
     float y0 = (float)pixelOffset.y() - t/2.0;
@@ -308,12 +337,12 @@ AnnotationUtils::createImageGeometry(osg::Image*       image,
     (*tcoords)[3].set(0, 1);
     geom->setTexCoordArray(textureUnit,tcoords);
 
-    osg::Vec4Array* colors = new osg::Vec4Array(1);
+    osg::Vec4Array* colors = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*colors)[0].set(1.0f,1.0f,1.0,1.0f);
     geom->setColorArray(colors);
-    geom->setColorBinding(osg::Geometry::BIND_OVERALL);
 
-    geom->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::QUADS,0,4));
+    GLushort indices[] = {0,1,2,0,2,3};
+    geom->addPrimitiveSet( new osg::DrawElementsUShort( GL_TRIANGLES, 6, indices ) );
 
     return geom;
 }
@@ -364,7 +393,7 @@ AnnotationUtils::createSphere( float r, const osg::Vec4& color, float maxAngle )
     b->push_back(1); b->push_back(5); b->push_back(2);
     geom->addPrimitiveSet( b );
 
-    osg::Vec3Array* n = new osg::Vec3Array();
+    osg::Vec3Array* n = new osg::Vec3Array(osg::Array::BIND_PER_VERTEX);
     n->reserve(6);
     n->push_back( osg::Vec3( 0, 0, 1) );
     n->push_back( osg::Vec3( 0, 0,-1) );
@@ -373,15 +402,13 @@ AnnotationUtils::createSphere( float r, const osg::Vec4& color, float maxAngle )
     n->push_back( osg::Vec3( 0, 1, 0) );
     n->push_back( osg::Vec3( 0,-1, 0) );
     geom->setNormalArray(n);
-    geom->setNormalBinding( osg::Geometry::BIND_PER_VERTEX );
 
     MeshSubdivider ms;
     ms.run( *geom, osg::DegreesToRadians(maxAngle), GEOINTERP_GREAT_CIRCLE );
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( geom );
@@ -418,7 +445,7 @@ AnnotationUtils::createHemisphere( float r, const osg::Vec4& color, float maxAng
     b->push_back(0); b->push_back(4); b->push_back(2);
     geom->addPrimitiveSet( b );
 
-    osg::Vec3Array* n = new osg::Vec3Array();
+    osg::Vec3Array* n = new osg::Vec3Array(osg::Array::BIND_PER_VERTEX);
     n->reserve(5);
     n->push_back( osg::Vec3(0,0,1) );
     n->push_back( osg::Vec3(-1,0,0) );
@@ -426,15 +453,13 @@ AnnotationUtils::createHemisphere( float r, const osg::Vec4& color, float maxAng
     n->push_back( osg::Vec3(0,1,0) );
     n->push_back( osg::Vec3(0,-1,0) );
     geom->setNormalArray(n);
-    geom->setNormalBinding( osg::Geometry::BIND_PER_VERTEX );
 
     MeshSubdivider ms;
     ms.run( *geom, osg::DegreesToRadians(maxAngle), GEOINTERP_GREAT_CIRCLE );
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( geom );
@@ -484,10 +509,9 @@ AnnotationUtils::createEllipsoidGeometry(float xRadius,
     }
 #endif
 
-    osg::Vec3Array* normals = new osg::Vec3Array();
+    osg::Vec3Array* normals = new osg::Vec3Array(osg::Array::BIND_PER_VERTEX);
     normals->reserve( latSegments * lonSegments );
     geom->setNormalArray( normals );
-    geom->setNormalBinding(osg::Geometry::BIND_PER_VERTEX );
 
     osg::DrawElementsUShort* el = new osg::DrawElementsUShort( GL_TRIANGLES );
     el->reserve( latSegments * lonSegments * 6 );
@@ -537,10 +561,9 @@ AnnotationUtils::createEllipsoidGeometry(float xRadius,
         }
     }
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     geom->setVertexArray( verts );
     geom->addPrimitiveSet( el );
@@ -605,17 +628,15 @@ AnnotationUtils::createFullScreenQuad( const osg::Vec4& color )
     b->push_back(2); b->push_back(3); b->push_back(0);
     geom->addPrimitiveSet( b );
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     osg::Geode* geode = new osg::Geode();
     geode->addDrawable( geom );
 
     osg::StateSet* s = geom->getOrCreateStateSet();
-    s->setMode(GL_LIGHTING,0);
-    //s->setMode(GL_BLEND,1); // redundant. AnnotationNode sets blend.
+    GLUtils::setLighting(s, 0);
     s->setMode(GL_DEPTH_TEST,0);
     s->setMode(GL_CULL_FACE,0);
     s->setAttributeAndModes( new osg::Depth(osg::Depth::ALWAYS, 0, 1, false), 1 );
@@ -652,10 +673,9 @@ AnnotationUtils::create2DQuad( const osg::BoundingBox& box, float padding, const
     b->push_back(2); b->push_back(3); b->push_back(0);
     geom->addPrimitiveSet( b );
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     // add the static "isText=true" uniform; this is a hint for the annotation shaders
     // if they get installed.
@@ -687,10 +707,9 @@ AnnotationUtils::create2DOutline( const osg::BoundingBox& box, float padding, co
     b->push_back(0); b->push_back(1); b->push_back(2); b->push_back(3);
     geom->addPrimitiveSet( b );
 
-    osg::Vec4Array* c = new osg::Vec4Array(1);
+    osg::Vec4Array* c = new osg::Vec4Array(osg::Array::BIND_OVERALL, 1);
     (*c)[0] = color;
     geom->setColorArray( c );
-    geom->setColorBinding( osg::Geometry::BIND_OVERALL );
 
     static osg::ref_ptr<osg::Uniform> s_isNotTextUniform = new osg::Uniform(osg::Uniform::BOOL, UNIFORM_IS_TEXT());
     s_isNotTextUniform->set( false );
@@ -789,8 +808,7 @@ AnnotationUtils::getAltitudePolicy(const Style& style, AltitudePolicy& out)
                 out.draping       = alt->technique() == AltitudeSymbol::TECHNIQUE_DRAPE;
 
                 // for instance/markers, GPU clamping falls back on SCENE clamping.
-                if (out.gpuClamping &&
-                    (style.has<InstanceSymbol>() || style.has<MarkerSymbol>()))
+                if (out.gpuClamping && style.has<InstanceSymbol>())
                 {
                     out.gpuClamping   = false;
                     out.sceneClamping = true;
@@ -819,30 +837,10 @@ AnnotationUtils::installOverlayParent(osg::Node* node, const Style& style)
     // GPU-clamped geometry
     else if ( ap.gpuClamping )
     {
-        ClampableNode* clampable = new ClampableNode( 0L );
+        ClampableNode* clampable = new ClampableNode();
         clampable->addChild( node );
         node = clampable;
-
-        const RenderSymbol* render = style.get<RenderSymbol>();
-        if ( render && render->depthOffset().isSet() )
-        {
-            clampable->setDepthOffsetOptions( *render->depthOffset() );
-        }
     }
-
-#if 0 // TODO -- constuct a callback instead.
-
-    // scenegraph-clamped geometry
-    else if ( ap.sceneClamping )
-    {
-        // save for later when we need to reclamp the mesh on the CPU
-        _altitude = style.get<AltitudeSymbol>();
-
-        // activate the terrain callback:
-        setCPUAutoClamping( true );
-    }
-
-#endif
 
     return node;
 }

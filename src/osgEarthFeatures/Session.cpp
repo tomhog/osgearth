@@ -21,13 +21,13 @@
 #include <osgEarthFeatures/Script>
 #include <osgEarthFeatures/ScriptEngine>
 #include <osgEarthFeatures/FeatureSource>
+
 #include <osgEarthSymbology/ResourceCache>
+#include <osgEarthSymbology/StyleSheet>
+
 #include <osgEarth/FileUtils>
 #include <osgEarth/StringUtils>
 #include <osgEarth/Registry>
-#include <osg/AutoTransform>
-#include <osg/Depth>
-#include <osg/TextureRectangle>
 
 #define LC "[Session] "
 
@@ -36,21 +36,55 @@ using namespace osgEarth::Features;
 
 //---------------------------------------------------------------------------
 
-Session::Session( const Map* map, StyleSheet* styles, FeatureSource* source, const osgDB::Options* dbOptions ) :
-osg::Referenced( true ),
-_map           ( map ),
-_mapInfo       ( map ),
-_featureSource ( source ),
-_dbOptions     ( dbOptions )
+Session::Session() :
+osg::Object(),
+_map(0L),
+_mapInfo(0L)
 {
-    if ( styles )
-        setStyles( styles );
-    else
-        _styles = new StyleSheet();
+    init();
+}
 
-    // if the caller did not provide a dbOptions, take it from the map.
-    if ( map && !dbOptions )
-        _dbOptions = map->getReadOptions();
+Session::Session(const Map* map) :
+osg::Object(),
+_map(map),
+_mapInfo(map)
+{
+    init();
+}
+
+Session::Session(const Map* map, StyleSheet* styles) :
+osg::Object(),
+_map(map),
+_mapInfo(map),
+_styles(styles)
+{
+    init();
+}
+
+Session::Session(const Map* map, StyleSheet* styles, FeatureSource* source, const osgDB::Options* dbOptions) :
+osg::Object(),
+_map(map),
+_mapInfo(map),
+_styles(styles),
+_featureSource(source),
+_dbOptions(dbOptions)
+{
+    init();
+}
+
+Session::Session(const Session& rhs, const osg::CopyOp& op) :
+osg::Object(rhs, op),
+_map(rhs._map.get()),
+_mapInfo(rhs._mapInfo)
+{
+    //nop
+}
+
+
+void
+Session::init()
+{
+    setStyles(_styles.get());
 
     // A new cache to optimize state changes. Since the cache lives in the Session, any
     // geometry created under this session takes advantage of it. That's reasonable since
@@ -68,7 +102,16 @@ Session::~Session()
 const osgDB::Options*
 Session::getDBOptions() const
 {
-    return _dbOptions.get();
+    // local options if they were set:
+    if (_dbOptions.valid())
+        return _dbOptions.get();
+
+    // otherwise get them from the map if possible:
+    osg::ref_ptr<const Map> map;
+    if (_map.lock(map))
+        return map->getReadOptions();
+
+    return 0L;
 }
 
 void
@@ -83,23 +126,36 @@ Session::getResourceCache()
     return _resourceCache.get();
 }
 
-MapFrame
-Session::createMapFrame( Map::ModelParts parts ) const
+osg::ref_ptr<const Map>
+Session::getMap() const
 {
-    return MapFrame( _map.get(), parts );
+    osg::ref_ptr<const Map> map;
+    _map.lock(map);
+    return map;
 }
 
-void
-Session::removeObject( const std::string& key )
+const SpatialReference*
+Session::getMapSRS() const
 {
-    Threading::ScopedMutexLock lock( _objMapMutex );
-    _objMap.erase( key );
+    return _mapInfo.getSRS();
+}
+
+StateSetCache*
+Session::getStateSetCache()
+{
+    return _stateSetCache.get();
 }
 
 void
 Session::setStyles( StyleSheet* value )
 {
     _styles = value ? value : new StyleSheet();
+    initScriptEngine();
+}
+
+void
+Session::initScriptEngine()
+{
     _styleScriptEngine = 0L;
 
     // Create a script engine for the StyleSheet
@@ -128,6 +184,12 @@ ScriptEngine*
 Session::getScriptEngine() const
 {
     return _styleScriptEngine.get();
+}
+
+void
+Session::setFeatureSource(FeatureSource* fs)
+{
+    _featureSource = fs;
 }
 
 FeatureSource*

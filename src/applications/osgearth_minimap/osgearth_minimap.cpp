@@ -28,6 +28,7 @@
 #include <osgEarthAnnotation/FeatureNode>
 #include <osgViewer/CompositeViewer>
 #include <osgEarthDrivers/gdal/GDALOptions>
+#include <osgEarth/ImageLayer>
 
 #define LC "[viewer] "
 
@@ -48,7 +49,7 @@ MapNode* makeMiniMapNode( ) {
 
     GDALOptions basemapOpt;
     basemapOpt.url() = "../data/world.tif";
-    map->addImageLayer( new ImageLayer( ImageLayerOptions("basemap", basemapOpt) ) );
+    map->addLayer( new ImageLayer( ImageLayerOptions("basemap", basemapOpt) ) );
 
     // That's it, the map is ready; now create a MapNode to render the Map:
     MapNodeOptions mapNodeOptions;
@@ -147,7 +148,6 @@ osgEarth::GeoExtent getExtent(osgViewer::View* view)
     double maxLat = osg::clampBelow(center.y() + radiusDegrees, 90.0);
 
     osgEarth::GeoExtent extent(srs, minLon, minLat, maxLon, maxLat);
-    extent.normalize();
 
     return extent;
 }
@@ -156,8 +156,6 @@ int
 main(int argc, char** argv)
 {
     osg::ArgumentParser arguments(&argc,argv);
-    if ( arguments.read("--stencil") )
-        osg::DisplaySettings::instance()->setMinimumNumStencilBits( 8 );
 
     //Setup a CompositeViewer
     osgViewer::CompositeViewer viewer(arguments);
@@ -185,7 +183,7 @@ main(int argc, char** argv)
     
     // load an earth file, and support all or our example command-line options
     // and earth file <external> tags    
-    osg::Node* node = MapNodeHelper().load( arguments, mainView );
+    osg::Node* node = MapNodeHelper().load( arguments, &viewer );
     if ( node )
     {
         MapNode* mapNode = MapNode::findMapNode(node);
@@ -199,7 +197,7 @@ main(int argc, char** argv)
         MapNode* miniMapNode = makeMiniMapNode();        
         miniMapGroup->addChild( miniMapNode );
        
-        //Get the main MapNode so we can do tranformations between it and our minimap
+        //Get the main MapNode so we can do transformations between it and our minimap
         MapNode* mainMapNode = MapNode::findMapNode( node );
                                
         //Set the scene data for the minimap

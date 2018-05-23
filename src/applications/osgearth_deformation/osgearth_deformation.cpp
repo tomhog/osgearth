@@ -339,12 +339,10 @@ struct DeformationHandler : public osgGA::GUIEventHandler
         _tool(TOOL_CIRCLE),
         _root(root),
         _offset(-100.0f),
-        _radius(100.0),
-        _query( s_mapNode->getMap() )
+        _radius(100.0)
     {
         _map = s_mapNode->getMap();
-        _query.setMaxTilesToCache(10);
-        _query.setFallBackOnNoData( false );
+        _envelope = _map->getElevationPool()->createEnvelope(_map->getSRS(), 12u);
     }
 
     void update( float x, float y, osgViewer::View* view )
@@ -364,16 +362,17 @@ struct DeformationHandler : public osgGA::GUIEventHandler
             mapPoint.z() = 0;
 
             // do an elevation query:
-            double query_resolution = 0; // max.
-            double out_hamsl        = 0.0;
-            double out_resolution   = 0.0;
+            typedef std::pair<float, float> ElAndRes;
+            ElAndRes elAndRes = _envelope->getElevationAndResolution(mapPoint.x(), mapPoint.y());
 
-            bool ok = _query.getElevation( 
-                mapPoint,
-                out_hamsl,
-                query_resolution, 
-                &out_resolution );
-            mapPoint.z() = out_hamsl;
+            float hamsl = elAndRes.first;
+            float res = elAndRes.second;
+
+            if (hamsl != NO_DATA_VALUE)
+            {
+                mapPoint.z() = hamsl;
+            }
+
             _mapPoint = mapPoint;
 
             
@@ -523,7 +522,7 @@ struct DeformationHandler : public osgGA::GUIEventHandler
                 else if (_tool == TOOL_BLAST)
                 {
                     // Apply a simple blast radius
-                    applyBlast(_mapPoint, _radius, -_radius, itr->first, itr->second);
+                    applyBlast(_mapPoint, _radius, -_radius, itr->first, itr->second.get());
                 }
                 s_deformations->addHeightField( itr->first, itr->second.get());
             }
@@ -543,7 +542,8 @@ struct DeformationHandler : public osgGA::GUIEventHandler
     double _radius;
     GeoPoint _mapPoint;
     osg::ref_ptr < FeatureNode > _featureNode;
-    ElevationQuery   _query;
+    //ElevationQuery   _query;
+    osg::ref_ptr<ElevationEnvelope> _envelope;
 };
 
 
@@ -577,7 +577,7 @@ int main(int argc, char** argv)
 
     ElevationLayer* layer = new ElevationLayer(elevationOpt, s_deformations);
     layer->open();
-    s_mapNode->getMap()->addElevationLayer(layer);
+    s_mapNode->getMap()->addLayer(layer);
 
     osg::Group* root = new osg::Group();
     viewer.setSceneData( root );

@@ -18,10 +18,7 @@
  */
 #include <osgEarth/MapCallback>
 #include <osgEarth/MapModelChange>
-#include <osgEarth/ImageLayer>
-#include <osgEarth/ElevationLayer>
-#include <osgEarth/ModelLayer>
-#include <osgEarth/MaskLayer>
+#include <osgEarth/Map>
 
 #define LC "[MapCallback] "
 
@@ -32,42 +29,65 @@ MapCallback::onMapModelChanged( const MapModelChange& change )
 {
     switch( change.getAction() )
     {
-    case MapModelChange::ADD_ELEVATION_LAYER: 
-        onElevationLayerAdded( change.getElevationLayer(), change.getFirstIndex() );
+    case MapModelChange::ADD_LAYER: 
+        onLayerAdded(change.getLayer(), change.getFirstIndex());
         break;
-    case MapModelChange::ADD_IMAGE_LAYER:
-        onImageLayerAdded( change.getImageLayer(), change.getFirstIndex() ); 
+
+    case MapModelChange::REMOVE_LAYER:
+        onLayerRemoved(change.getLayer(), change.getFirstIndex());
         break;
-    case MapModelChange::ADD_MASK_LAYER:
-        onMaskLayerAdded( change.getMaskLayer() );
+
+    case MapModelChange::MOVE_LAYER:
+        onLayerMoved(change.getLayer(), change.getFirstIndex(), change.getSecondIndex());
         break;
-    case MapModelChange::ADD_MODEL_LAYER:
-        onModelLayerAdded( change.getModelLayer(), change.getFirstIndex() ); 
+
+    case MapModelChange::ENABLE_LAYER:
+        onLayerEnabled(change.getLayer());
         break;
-    case MapModelChange::REMOVE_ELEVATION_LAYER:
-        onElevationLayerRemoved( change.getElevationLayer(), change.getFirstIndex() ); 
+
+    case MapModelChange::DISABLE_LAYER:
+        onLayerDisabled(change.getLayer());
         break;
-    case MapModelChange::REMOVE_IMAGE_LAYER:
-        onImageLayerRemoved( change.getImageLayer(), change.getFirstIndex() );
-        break;
-    case MapModelChange::REMOVE_MASK_LAYER:
-        onMaskLayerRemoved( change.getMaskLayer() ); 
-        break;
-    case MapModelChange::REMOVE_MODEL_LAYER:
-        onModelLayerRemoved( change.getModelLayer() ); 
-        break;
-    case MapModelChange::MOVE_ELEVATION_LAYER:
-        onElevationLayerMoved( change.getElevationLayer(), change.getFirstIndex(), change.getSecondIndex() ); 
-        break;
-    case MapModelChange::MOVE_IMAGE_LAYER:
-        onImageLayerMoved( change.getImageLayer(), change.getFirstIndex(), change.getSecondIndex() ); 
-        break;
-    case MapModelChange::MOVE_MODEL_LAYER:
-        onModelLayerMoved( change.getModelLayer(), change.getFirstIndex(), change.getSecondIndex() ); 
-        break;
-    case MapModelChange::UNSPECIFIED: 
-        break;
+
+    case MapModelChange::BEGIN_BATCH_UPDATE:
+	onBeginUpdate();
+	break;
+
+    case MapModelChange::END_BATCH_UPDATE:
+	onEndUpdate();
+	break;
+
     default: 
         break;
+    }
+}
+
+void
+MapCallback::invokeOnLayerAdded(const Map* map)
+{
+    LayerVector layers;
+    map->getLayers(layers);
+    unsigned index = 0;
+    if (layers.size() > 0)
+    {
+        onBeginUpdate();
+        for (LayerVector::iterator i = layers.begin(); i != layers.end(); ++i)
+            onLayerAdded(i->get(), index++);
+        onEndUpdate();
+    }
+}
+
+void
+MapCallback::invokeOnLayerRemoved(const Map* map)
+{
+    LayerVector layers;
+    map->getLayers(layers);
+    unsigned index = 0;
+    if (layers.size() > 0)
+    {
+        onBeginUpdate();
+        for (LayerVector::iterator i = layers.begin(); i != layers.end(); ++i)
+            onLayerRemoved(i->get(), index++);
+        onEndUpdate();
     }
 }

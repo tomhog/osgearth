@@ -23,6 +23,7 @@
 #include <osgDB/FileNameUtils>
 #include <osgEarth/Map>
 #include <osgEarth/MapNode>
+#include <osgEarth/NodeUtils>
 #include <osgEarthUtil/Sky>
 #include <osgEarthUtil/Controls>
 #include <osgEarthUtil/ExampleResources>
@@ -61,7 +62,7 @@ namespace osgEarth { namespace GLSky
     public: // ExtensionInterface<ui::Control>
 
         bool connect( ui::Control* );
-        bool disconnect( ui::Control* ) { return true; }
+        bool disconnect( ui::Control* );
 
     public: // SkyNodeFactory
 
@@ -71,6 +72,7 @@ namespace osgEarth { namespace GLSky
         GLSkyExtension(const GLSkyExtension&, const osg::CopyOp&) { }
         virtual ~GLSkyExtension() { }
 
+        osg::ref_ptr<ui::Control> _ui;
         osg::ref_ptr<SkyNode> _skyNode;
     };
 
@@ -94,36 +96,16 @@ GLSkyOptions(options)
 bool
 GLSkyExtension::connect(MapNode* mapNode)
 {
-    OE_INFO << LC << "Hello world.\n";
-    
-    // find the tip top of the tree that MapNode is in:
-    osg::Node* top = mapNode;
-    while (top->getNumParents() > 0 && std::string(top->getParent(0)->className()) != "Camera")
-        top = top->getParent(0);
-
-    osg::Group* topParent = top->getNumParents() > 0 ? top->getParent(0) : 0L;
-
-    // make the sky node
-    if ( !_skyNode.valid() )
-    {
-        _skyNode = createSkyNode( mapNode->getMap()->getProfile() );
-    }
-     
-    // insert the new sky node at the top of the tree.
-    _skyNode->addChild( top );
-
-    if ( topParent )
-    {
-        topParent->addChild( _skyNode.get() );
-        topParent->removeChild( top );
-    }
-
+    _skyNode = createSkyNode(mapNode->getMap()->getProfile());
+    osgEarth::insertParent(_skyNode.get(), mapNode);
     return true;
 }
 
 bool
 GLSkyExtension::disconnect(MapNode* mapNode)
 {
+    osgEarth::removeGroup(_skyNode.get());
+    _skyNode = 0L;
     return true;
 }
 
@@ -143,6 +125,15 @@ GLSkyExtension::connect(ui::Control* control)
     ui::Container* container = dynamic_cast<ui::Container*>(control);
     if (container && _skyNode.valid())
         container->addControl(SkyControlFactory::create(_skyNode.get()));
+    return true;
+}
+
+bool
+GLSkyExtension::disconnect(ui::Control* control)
+{
+    ui::Container* container = dynamic_cast<ui::Container*>(control);
+    if (container && _ui.valid())
+        container->removeChild(_ui.get());
     return true;
 }
 

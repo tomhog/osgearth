@@ -9,46 +9,49 @@ SET(LIB_NAME osgEarthUtil)
 SET(HEADER_PATH ${OSGEARTH_SOURCE_DIR}/include/${LIB_NAME})
 
 SET(HEADERS_ROOT
-	ActivityMonitorTool
+    ActivityMonitorTool
     AnnotationEvents
-    AutoClipPlaneHandler	
+    AutoClipPlaneHandler
+    AutoScaleCallback
     ArcGIS
     AtlasBuilder
+    ClipSpace
     Common
     Controls
     ContourMap
     ClampCallback
+    ClusterNode
     DataScanner
     EarthManipulator
-	Ephemeris
+    Ephemeris
     ExampleResources
     Export
-    FeatureQueryTool
+    FlatteningLayer
     Fog
     Formatter
+    FractalElevationLayer
+    GARSGraticule
     GeodeticGraticule
-    GraticuleExtension
-    GraticuleNode
-    GraticuleOptions
-    GraticuleTerrainEffect
+    GeodeticLabelingEngine
+    GraticuleLabelingEngine
     HTM
     LatLongFormatter
     LineOfSight
     LinearLineOfSight
     LODBlending
-	LogarithmicDepthBuffer
+    LogarithmicDepthBuffer
     MeasureTool
     MGRSFormatter
     MGRSGraticule
     MouseCoordsTool
-    ObjectLocator
+    MultiElevationLayer
     Ocean
     PolyhedralLineOfSight
     RadialLineOfSight
     RTTPicker
     Shaders
-	Shadowing
-	SimplexNoise
+    Shadowing
+    SimpleOceanLayer
     SimplePager
     Sky
     SpatialData
@@ -61,8 +64,11 @@ SET(HEADERS_ROOT
     TMS
     TMSBackFiller
     TMSPackager
+    TopologyGraph
     UTMGraticule
+    UTMLabelingEngine
     VerticalScale
+    ViewFitter
     WFS
     WMS
 )
@@ -81,55 +87,60 @@ set(TARGET_GLSL
     Graticule.vert.glsl
     Graticule.frag.glsl
     LogDepthBuffer.vert.glsl
-    LogDepthBuffer.VertOnly.vert.glsl    
+    LogDepthBuffer.VertOnly.vert.glsl
     LogDepthBuffer.frag.glsl
     Shadowing.vert.glsl
-    Shadowing.frag.glsl)
+    Shadowing.frag.glsl
+    SimpleOceanLayer.vert.glsl
+    SimpleOceanLayer.frag.glsl)
 
 set(TARGET_IN
     Shaders.cpp.in)
 
-configure_shaders(            
+configure_shaders(
     Shaders.cpp.in
     ${SHADERS_CPP}
     ${TARGET_GLSL} )
 
 
 SET(SOURCES_ROOT
-	ActivityMonitorTool.cpp
+    ActivityMonitorTool.cpp
     AnnotationEvents.cpp
     ArcGIS.cpp
     AtlasBuilder.cpp
     AutoClipPlaneHandler.cpp
     ClampCallback.cpp
+    ClipSpace.cpp
+    ClusterNode.cpp
     Controls.cpp
     ContourMap.cpp
     DataScanner.cpp
     EarthManipulator.cpp
-	Ephemeris.cpp
+    Ephemeris.cpp
     ExampleResources.cpp
-    FeatureQueryTool.cpp
+    FlatteningLayer.cpp
     Fog.cpp
+    FractalElevationLayer.cpp
+    GARSGraticule.cpp
     GeodeticGraticule.cpp
-    GraticuleExtension.cpp
-    GraticuleTerrainEffect.cpp
-    GraticuleNode.cpp
+    GeodeticLabelingEngine.cpp
+    GraticuleLabelingEngine.cpp
     HTM.cpp
     LatLongFormatter.cpp
     LinearLineOfSight.cpp
-	LogarithmicDepthBuffer.cpp
+    LogarithmicDepthBuffer.cpp
     LODBlending.cpp
     MeasureTool.cpp
     MGRSFormatter.cpp
     MGRSGraticule.cpp
     MouseCoordsTool.cpp
-    ObjectLocator.cpp
+    MultiElevationLayer.cpp
     Ocean.cpp
     PolyhedralLineOfSight.cpp
     RadialLineOfSight.cpp
     RTTPicker.cpp
-	Shadowing.cpp
-	SimplexNoise.cpp
+    Shadowing.cpp
+    SimpleOceanLayer.cpp
     SimplePager.cpp
     SpatialData.cpp
     Sky.cpp
@@ -141,8 +152,11 @@ SET(SOURCES_ROOT
     TMS.cpp
     TMSBackFiller.cpp
     TMSPackager.cpp
+    TopologyGraph.cpp
     UTMGraticule.cpp
+    UTMLabelingEngine.cpp
     VerticalScale.cpp
+    ViewFitter.cpp
     WFS.cpp
     WMS.cpp
     ${SHADERS_CPP}
@@ -182,7 +196,7 @@ SET(LIB_PUBLIC_HEADERS
     ${HEADERS_COLORFILTER}
 )
 
-SET(LIB_COMMON_FILES 
+SET(LIB_COMMON_FILES
     ${SOURCES_ROOT} ${SOURCES_COLORFILTER}
 )
 

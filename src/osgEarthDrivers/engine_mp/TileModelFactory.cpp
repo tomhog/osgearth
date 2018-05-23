@@ -84,19 +84,20 @@ namespace
             const Profile* layerProfile = _layer->getProfile();
 
             //Only try to get data from the source if it actually intersects the key extent
-            bool hasDataInExtent = true;
-            if (tileSource && layerProfile)
-            {
-                GeoExtent ext = _key.getExtent();
-                if (!layerProfile->getSRS()->isEquivalentTo( ext.getSRS()))
-                {
-                    ext = layerProfile->clampAndTransformExtent( ext );
-                }
-                hasDataInExtent = tileSource->hasDataInExtent( ext );
-            }
+            bool hasDataInExtent = _layer->mayHaveDataInExtent(_key.getExtent());
+            //bool hasDataInExtent = true;
+            //if (tileSource && layerProfile)
+            //{
+            //    GeoExtent ext = _key.getExtent();
+            //    if (!layerProfile->getSRS()->isEquivalentTo( ext.getSRS()))
+            //    {
+            //        ext = layerProfile->clampAndTransformExtent( ext );
+            //    }
+            //    hasDataInExtent = tileSource->hasDataInExtent( ext );
+            //}
             
             // fetch the image from the layer.
-            if (hasDataInExtent && _layer->isKeyInRange(_key))
+            if (hasDataInExtent && _layer->isKeyInLegalRange(_key))
             {
                 if ( useMercatorFastPath )
                 {
@@ -275,7 +276,7 @@ TileModelFactory::buildElevation(const TileKey&    key,
     if (_meshHFCache->getOrCreateHeightField(frame, key, parentHF.get(), hf, isFallback, SAMPLE_FIRST_VALID, interp, progress))
     {
         model->_elevationData = TileModel::ElevationData(
-            hf,
+            hf.get(),
             GeoLocator::createForKey( key, mapInfo ),
             isFallback );
 
@@ -392,7 +393,7 @@ TileModelFactory::buildNormalMap(const TileKey&    key,
             else
             {
                 model->_normalData = TileModel::NormalData(
-                    hf,
+                    hf.get(),
                     GeoLocator::createForKey( key, mapInfo ),
                     isFallback );
 
@@ -405,10 +406,10 @@ TileModelFactory::buildNormalMap(const TileKey&    key,
     {
         // empty HF must be at least 2x2 for normal texture gen to work
         hf = HeightFieldUtils::createReferenceHeightField(
-            key.getExtent(), EMPTY_NORMAL_MAP_SIZE, EMPTY_NORMAL_MAP_SIZE, true );
+            key.getExtent(), EMPTY_NORMAL_MAP_SIZE, EMPTY_NORMAL_MAP_SIZE, 0u, true );
 
         model->_normalData = TileModel::NormalData(
-            hf,
+            hf.get(),
             GeoLocator::createForKey( key, mapInfo ),
             false );
 
@@ -446,11 +447,15 @@ TileModelFactory::createTileModel(const TileKey&           key,
     // Fetch the image data and make color layers.
     unsigned index = 0;
     unsigned order = 0;
-    for( ImageLayerVector::const_iterator i = frame.imageLayers().begin(); i != frame.imageLayers().end(); ++i )
+
+    ImageLayerVector imageLayers;
+    frame.getLayers(imageLayers);
+
+    for( ImageLayerVector::const_iterator i = imageLayers.begin(); i != imageLayers.end(); ++i )
     {
         ImageLayer* layer = i->get();
 
-        if ( layer->getEnabled() && layer->isKeyInRange(key) )
+        if ( layer->getEnabled() && layer->isKeyInLegalRange(key) )
         {
             BuildColorData build;
             build.init( key, layer, order, frame.getMapInfo(), _terrainOptions, _liveTiles.get(), model.get() );
@@ -495,7 +500,7 @@ TileModelFactory::createTileModel(const TileKey&           key,
     // as fallback data of course)
     if ( !model->_elevationData.getHeightField() )
     {
-        osg::HeightField* hf = HeightFieldUtils::createReferenceHeightField( key.getExtent(), 15, 15 );
+        osg::HeightField* hf = HeightFieldUtils::createReferenceHeightField( key.getExtent(), 15, 15, 0u );
         model->_elevationData = TileModel::ElevationData(
             hf,
             GeoLocator::createForKey(key, frame.getMapInfo()),

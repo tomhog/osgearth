@@ -52,7 +52,8 @@ _initialized( false )
 void
 ResourceLibrary::mergeConfig( const Config& conf )
 {
-    _name = conf.value( "name" );
+    if (_name.empty())
+        _name = conf.value( "name" );
 
     conf.getIfSet( "url", _uri );
 
@@ -180,6 +181,7 @@ ResourceLibrary::initialize( const osgDB::Options* dbOptions )
 
             if ( _uri.isSet() )
             {
+                OE_INFO << LC << "Loading library from " << _uri->full() << std::endl;
                 osg::ref_ptr<XmlDocument> xml = XmlDocument::load( *_uri, dbOptions );
                 if ( xml.valid() )
                 {
@@ -196,6 +198,12 @@ ResourceLibrary::initialize( const osgDB::Options* dbOptions )
                         if ( !child.empty() )
                             mergeConfig( child );
                     }
+
+                    OE_INFO << LC << "Found " << _skins.size() << " textures, " << _instances.size() << " models\n";
+                }
+                else
+                {
+                    OE_WARN << LC << "Failed to load library from XML\n";
                 }
             }
             _initialized = true;
@@ -315,28 +323,6 @@ ResourceLibrary::matches( const SkinSymbol* q, SkinResource* s ) const
     }
 
     return true;
-}
-
-MarkerResource*
-ResourceLibrary::getMarker( const std::string& name, const osgDB::Options* dbOptions ) const
-{
-    const_cast<ResourceLibrary*>(this)->initialize( dbOptions );
-    Threading::ScopedReadLock shared( _mutex );
-    ResourceMap<MarkerResource>::const_iterator i = _markers.find( name );
-    return i != _markers.end() ? i->second.get() : 0L;
-}
-
-void
-ResourceLibrary::getMarkers( MarkerResourceVector& output, const osgDB::Options* dbOptions ) const
-{
-    const_cast<ResourceLibrary*>(this)->initialize( dbOptions );
-    Threading::ScopedReadLock shared( _mutex );
-
-    output.clear();
-    output.reserve( _markers.size() );
-
-    for( ResourceMap<MarkerResource>::const_iterator i = _markers.begin(); i != _markers.end(); ++i )
-        output.push_back( i->second.get() );
 }
 
 InstanceResource*

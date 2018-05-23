@@ -40,7 +40,7 @@ Get the Dependencies
     * AlphaPixel_ has pre-built OSG_ and 3rd-party dependencies for various architectures.
     * Pre-built `GDAL binaries`_ for various architectures.
     
-**Optional depedencies**: osgEarth will compile without them. Look and decide what you need
+**Optional dependencies**: osgEarth will compile without them. Look and decide what you need
 
     * GEOS_ 3.2.0 or later - C++ library for topological operations.
       osgEarth uses GEOS to perform various geometry operations like buffering and intersections.
@@ -95,7 +95,7 @@ Here are a few tips.
 .. _GDAL:           http://www.gdal.org/
 .. _GDAL binaries:  http://www.gisinternals.com/
 .. _FWTools:        http://fwtools.maptools.org/
-.. _AlphaPixel:     http://openscenegraph.alphapixel.com/osg/downloads/openscenegraph-third-party-library-downloads
+.. _AlphaPixel:     http://downloads.alphapixel.org/
 .. _Mike Weiblen:   http://mew.cx/osg/
 .. _the forum:      http://forum.osgearth.org
 .. _LevelDB:        https://github.com/pelicanmapping/leveldb

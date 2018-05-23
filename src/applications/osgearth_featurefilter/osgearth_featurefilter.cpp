@@ -25,6 +25,7 @@
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 #include <osgEarthFeatures/Filter>
+#include <osgEarthFeatures/FilterContext>
 
 #define LC "[viewer] "
 
@@ -81,10 +82,8 @@ OSGEARTH_REGISTER_SIMPLE_FEATUREFILTER(change_attribute, ChangeAttributeFilter);
 int
 main(int argc, char** argv)
 {    
-    //Run this example with the the feature_custom_filters.earth file in the tests directory for a simple example
+    //Run this example with the feature_custom_filters.earth file in the tests directory for a simple example
     osg::ArgumentParser arguments(&argc,argv);
-    if ( arguments.read("--stencil") )
-        osg::DisplaySettings::instance()->setMinimumNumStencilBits( 8 );
 
     // create a viewer:
     osgViewer::Viewer viewer(arguments);

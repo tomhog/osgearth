@@ -26,6 +26,16 @@
 
 #include <osgEarth/DepthOffset>
 #include <osgEarth/MapNode>
+#include <osgEarth/NodeUtils>
+#include <osgEarth/ShaderUtils>
+#include <osgEarth/GLUtils>
+
+#include <osg/PolygonOffset>
+#include <osg/Depth>
+
+#ifndef GL_CLIP_DISTANCE0
+#define GL_CLIP_DISTANCE0 0x3000
+#endif
 
 using namespace osgEarth;
 using namespace osgEarth::Annotation;
@@ -48,6 +58,9 @@ _priority   ( 0.0f )
     
     _horizonCuller = new HorizonCullCallback();
     this->addCullCallback( _horizonCuller.get() );
+
+    _mapNodeRequired = true;
+    ADJUST_UPDATE_TRAV_COUNT(this, +1);
 }
 
 AnnotationNode::AnnotationNode(const Config& conf) :
@@ -62,11 +75,41 @@ _priority   ( 0.0f )
     this->addCullCallback( _horizonCuller.get() );
 
     this->setName( conf.value("name") );
+
+    _mapNodeRequired = true;
+    ADJUST_UPDATE_TRAV_COUNT(this, +1);
 }
 
 AnnotationNode::~AnnotationNode()
 {
     setMapNode( 0L );
+}
+
+void
+AnnotationNode::traverse(osg::NodeVisitor& nv)
+{
+    if (nv.getVisitorType() == nv.UPDATE_VISITOR)
+    {
+        // MapNode auto discovery.
+        if (_mapNodeRequired)
+        {
+            if (getMapNode() == 0L)
+            {
+                MapNode* mapNode = osgEarth::findInNodePath<MapNode>(nv);
+                if (mapNode)
+                {
+                    setMapNode(mapNode);
+                }
+            }
+
+            if (getMapNode() != 0L)
+            {
+                _mapNodeRequired = false;
+                ADJUST_UPDATE_TRAV_COUNT(this, -1);
+            }
+        }
+    }
+    osg::Group::traverse(nv);
 }
 
 void
@@ -76,7 +119,8 @@ AnnotationNode::setLightingIfNotSet( bool lighting )
 
     if ( ss->getMode(GL_LIGHTING) == osg::StateAttribute::INHERIT )
     {
-        this->getOrCreateStateSet()->setMode(GL_LIGHTING,
+        GLUtils::setLighting(
+            getOrCreateStateSet(),
             lighting ? osg::StateAttribute::ON | osg::StateAttribute::PROTECTED :
                        osg::StateAttribute::OFF | osg::StateAttribute::PROTECTED );
     }
@@ -171,8 +215,8 @@ AnnotationNode::applyRenderSymbology(const Style& style)
 
         if ( render->lighting().isSet() )
         {
-            getOrCreateStateSet()->setMode(
-                GL_LIGHTING,
+            GLUtils::setLighting(
+                getOrCreateStateSet(),
                 (render->lighting() == true? osg::StateAttribute::ON : osg::StateAttribute::OFF) | osg::StateAttribute::OVERRIDE );
         }
 
@@ -189,15 +233,15 @@ AnnotationNode::applyRenderSymbology(const Style& style)
                 (render->backfaceCulling() == true? osg::StateAttribute::ON : osg::StateAttribute::OFF) | osg::StateAttribute::OVERRIDE );
         }
 
-#ifndef OSG_GLES2_AVAILABLE
+#if !( defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) )
         if ( render->clipPlane().isSet() )
         {
-            GLenum mode = GL_CLIP_PLANE0 + render->clipPlane().value();
+            GLenum mode = GL_CLIP_DISTANCE0 + render->clipPlane().value();
             getOrCreateStateSet()->setMode(mode, 1);
         }
 #endif
 
-        if ( render->order().isSet() || render->renderBin().isSet() )
+        if ( supportsRenderBinDetails() && (render->order().isSet() || render->renderBin().isSet()) )
         {
             osg::StateSet* ss = getOrCreateStateSet();
             int binNumber = render->order().isSet() ? (int)render->order()->eval() : ss->getBinNumber();
@@ -217,6 +261,15 @@ AnnotationNode::applyRenderSymbology(const Style& style)
         {
             osg::StateSet* ss = getOrCreateStateSet();
             ss->setRenderingHint( ss->TRANSPARENT_BIN );
+        }
+        
+        if (render->decal() == true)
+        {
+            getOrCreateStateSet()->setAttributeAndModes(
+                new osg::PolygonOffset(-1,-1), 1);
+
+            getOrCreateStateSet()->setAttributeAndModes(
+                new osg::Depth(osg::Depth::LEQUAL, 0, 1, false));
         }
     }
 }

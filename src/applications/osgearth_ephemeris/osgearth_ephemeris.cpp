@@ -22,6 +22,7 @@
 
 #include <osgViewer/Viewer>
 #include <osgEarth/Notify>
+#include <osgEarth/NodeUtils>
 #include <osgEarthUtil/EarthManipulator>
 #include <osgEarthUtil/ExampleResources>
 #include <osgEarthUtil/Ephemeris>
@@ -76,7 +77,7 @@ main(int argc, char** argv)
 
     viewer.getCamera()->setSmallFeatureCullingPixelSize(-1.0f);
 
-    osg::ref_ptr<osg::Image> mark = osgDB::readImageFile("../data/placemark32.png");
+    osg::ref_ptr<osg::Image> mark = osgDB::readRefImageFile("../data/placemark32.png");
     
     App app;
 
@@ -92,12 +93,12 @@ main(int argc, char** argv)
 
         app.sunPos = new PlaceNode(mapNode, GeoPoint(), mark.get(), "Sun");
         app.sunPos->setDynamic(true);
-        root->addChild( app.sunPos.get() );
+        mapNode->addChild( app.sunPos.get() );
 
         app.moonPos = new PlaceNode(mapNode, GeoPoint(), mark.get(), "Moon");
         app.moonPos->setDynamic(true);
 
-        root->addChild( app.moonPos.get() );        
+        mapNode->addChild( app.moonPos.get() );        
 
 
         app.sky = osgEarth::findTopMostNodeOfType<SkyNode>(node);        
@@ -109,7 +110,7 @@ main(int argc, char** argv)
 
         LatLongFormatter llf;
         llf.setOptions( LatLongFormatter::Options(llf.FORMAT_DEGREES_MINUTES_SECONDS) );
-        llf.setPrecision( 4 );
+        llf.setPrecision( 8 );
 
         viewer.setSceneData( root );
 
@@ -121,19 +122,19 @@ main(int argc, char** argv)
             {
                 const DateTime& dt = app.sky->getDateTime();
 
-                osg::Vec3d sunECEF = ephemeris->getSunPositionECEF(dt);
-                GeoPoint sun;
-                sun.fromWorld(mapNode->getMapSRS(), sunECEF);
-                sun.alt() = 0.0;
-                app.sunPos->setPosition( sun );
-                app.sunPos->setText( "Sun\n" + llf.format(sun) );
+                CelestialBody sun = ephemeris->getSunPosition(dt);
+                GeoPoint sunPos;
+                sunPos.fromWorld(mapNode->getMapSRS(), sun.geocentric);
+                sunPos.alt() = 0.0;
+                app.sunPos->setPosition( sunPos );
+                app.sunPos->setText( "Sun\n" + llf.format(sunPos) );
 
-                osg::Vec3d moonECEF = ephemeris->getMoonPositionECEF(dt);
-                GeoPoint moon;
-                moon.fromWorld(mapNode->getMapSRS(), moonECEF);
-                moon.alt() = 0.0;
-                app.moonPos->setPosition( moon );
-                app.moonPos->setText( "Moon\n" + llf.format(moon) );
+                CelestialBody moon = ephemeris->getMoonPosition(dt);
+                GeoPoint moonPos;
+                moonPos.fromWorld(mapNode->getMapSRS(), moon.geocentric);
+                moonPos.alt() = 0.0;
+                app.moonPos->setPosition( moonPos );
+                app.moonPos->setText( "Moon\n" + llf.format(moonPos) );
             }
         }
     }

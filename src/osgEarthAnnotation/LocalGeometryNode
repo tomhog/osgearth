@@ -88,7 +88,7 @@ namespace osgEarth { namespace Annotation
         /**
          * Gets the external node attached to this annotation (if applicable)
          */
-        osg::Node* getNode() { return _node; }
+        osg::Node* getNode() { return _node.get(); }
 
         /**
          * Sets an external node to attach to this annotation
@@ -96,6 +96,8 @@ namespace osgEarth { namespace Annotation
         void setNode( osg::Node* node );
 
     public:
+
+        virtual void setLocalOffset(const osg::Vec3f& pos);
 
         virtual void setMapNode(MapNode*);
 
@@ -113,7 +115,9 @@ namespace osgEarth { namespace Annotation
 
     public: // osg::Node
 
-        virtual osg::BoundingSphere computeBound() const;
+        //virtual osg::BoundingSphere computeBound() const;
+
+        virtual void traverse(osg::NodeVisitor&);
 
     protected: // GeoPositionNode
 
@@ -125,11 +129,12 @@ namespace osgEarth { namespace Annotation
         Style                        _style;
         osg::ref_ptr<osg::Node>      _node;
         osg::ref_ptr<Geometry>       _geom;
+        bool                         _clampDirty;
         
         typedef TerrainCallbackAdapter<LocalGeometryNode> ClampCallback;
         osg::ref_ptr<ClampCallback> _clampCallback;
         bool _clampRelative;
-        mutable osg::Polytope _boundingPT;
+        //mutable osg::Polytope _boundingPT;
 
         void initNode();
         void initGeometry(const osgDB::Options*);
@@ -140,11 +145,11 @@ namespace osgEarth { namespace Annotation
     public:
         void onTileAdded(
             const TileKey&          key, 
-            osg::Node*              tile, 
+            osg::Node*              graph, 
             TerrainCallbackContext& context);
 
-        virtual void clampToScene(
-            osg::Node*     tile,
+        virtual void clamp(
+            osg::Node*     graph,
             const Terrain* terrain);
     };
 

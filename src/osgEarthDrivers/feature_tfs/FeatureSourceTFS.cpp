@@ -21,13 +21,18 @@
 #include <osgEarth/Registry>
 #include <osgEarth/XmlUtils>
 #include <osgEarth/FileUtils>
+
 #include <osgEarthFeatures/FeatureSource>
 #include <osgEarthFeatures/Filter>
+#include <osgEarthFeatures/FilterContext>
 #include <osgEarthFeatures/BufferFilter>
 #include <osgEarthFeatures/ScaleFilter>
 #include <osgEarthFeatures/MVT>
 #include <osgEarthFeatures/OgrUtils>
+#include <osgEarthFeatures/FeatureCursor>
+
 #include <osgEarthUtil/TFS>
+
 #include <osg/Notify>
 #include <osgDB/FileNameUtils>
 #include <osgDB/FileUtils>
@@ -112,7 +117,7 @@ public:
             fp->setTiled( true );
             fp->setFirstLevel( *_options.minLevel() );
             fp->setMaxLevel( *_options.maxLevel() );
-            fp->setProfile( profile );
+            fp->setProfile( profile.get() );
             if ( _options.geoInterp().isSet() )
                 fp->geoInterp() = _options.geoInterp().get();
         }
@@ -303,20 +308,16 @@ public:
         }
 
         //If we have any filters, process them here before the cursor is created
-        if (!getFilters().empty())
+        if (getFilters() && !getFilters()->empty() && !features.empty())
         {
-            // preprocess the features using the filter list:
-            if ( features.size() > 0 )
-            {
-                FilterContext cx;
-                cx.setProfile( getFeatureProfile() );
-                cx.extent() = query.tileKey()->getExtent();
+            FilterContext cx;
+            cx.setProfile(getFeatureProfile());
+            cx.extent() = query.tileKey()->getExtent();
 
-                for( FeatureFilterList::const_iterator i = getFilters().begin(); i != getFilters().end(); ++i )
-                {
-                    FeatureFilter* filter = i->get();
-                    cx = filter->push( features, cx );
-                }
+            for (FeatureFilterChain::const_iterator i = getFilters()->begin(); i != getFilters()->end(); ++i)
+            {
+                FeatureFilter* filter = i->get();
+                cx = filter->push(features, cx);
             }
         }
 
@@ -371,8 +372,7 @@ public:
 
 private:
     const TFSFeatureOptions         _options;    
-    FeatureSchema                   _schema;
-    osg::ref_ptr<CacheBin>          _cacheBin;
+    FeatureSchema                   _schema;    
     osg::ref_ptr<osgDB::Options>    _readOptions;    
     TFSLayer                        _layer;
     bool                            _layerValid;

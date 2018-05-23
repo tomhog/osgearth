@@ -22,10 +22,15 @@
 
 #include <osgEarth/Registry>
 #include <osgEarth/FileUtils>
+
 #include <osgEarthUtil/TileIndex>
-#include <osgEarthDrivers/feature_ogr/OGRFeatureOptions>
-#include <ogr_api.h>
+
 #include <osgEarthFeatures/OgrUtils>
+#include <osgEarthFeatures/FeatureCursor>
+
+#include <osgEarthDrivers/feature_ogr/OGRFeatureOptions>
+
+#include <ogr_api.h>
 #include <osgDB/FileUtils>
 
 using namespace osgEarth;
@@ -139,7 +144,7 @@ bool TileIndex::add( const std::string& filename, const GeoExtent& extent )
     polygon->push_back( osg::Vec3d(extent.bounds().xMin(), extent.bounds().yMax(), 0) );
     polygon->push_back( osg::Vec3d(extent.bounds().xMin(), extent.bounds().yMin(), 0) );
    
-    osg::ref_ptr< Feature > feature = new Feature( polygon, extent.getSRS()  );
+    osg::ref_ptr< Feature > feature = new Feature( polygon.get(), extent.getSRS()  );
     feature->set("location", filename );
     
     const SpatialReference* wgs84 = SpatialReference::create("epsg:4326");

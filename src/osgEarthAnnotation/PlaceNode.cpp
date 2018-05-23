@@ -31,6 +31,8 @@
 #include <osgEarth/ShaderGenerator>
 #include <osgEarth/GeoMath>
 #include <osgEarth/ScreenSpaceLayout>
+#include <osgEarth/NodeUtils>
+#include <osgEarth/Lighting>
 
 #include <osg/Depth>
 #include <osgText/Text>
@@ -43,8 +45,10 @@ using namespace osgEarth::Features;
 using namespace osgEarth::Symbology;
 
 PlaceNode::PlaceNode() :
+_geode            ( 0L ),
 _labelRotationRad ( 0. ),
-_followFixedCourse( false )
+_followFixedCourse( false ),
+_imageGeom(0)
 {
     //nop
 }
@@ -55,15 +59,17 @@ PlaceNode::PlaceNode(MapNode*           mapNode,
                      const std::string& text,
                      const Style&       style ) :
 
-GeoPositionNode( mapNode, position ),
+GeoPositionNode( mapNode ),
 _image   ( image ),
 _text    ( text ),
 _style   ( style ),
 _geode            ( 0L ),
 _labelRotationRad ( 0. ),
-_followFixedCourse( false )
+_followFixedCourse( false ),
+_imageGeom(0)
 {
     init();
+    setPosition(position);
 }
 
 PlaceNode::PlaceNode(MapNode*           mapNode,
@@ -71,33 +77,44 @@ PlaceNode::PlaceNode(MapNode*           mapNode,
                      const std::string& text,
                      const Style&       style ) :
 
-GeoPositionNode( mapNode, position ),
+GeoPositionNode( mapNode ),
 _text    ( text ),
 _style   ( style ),
 _geode            ( 0L ),
 _labelRotationRad ( 0. ),
-_followFixedCourse( false )
+_followFixedCourse( false ),
+_imageGeom(0)
 {
     init();
+    setPosition(position);
 }
 
 PlaceNode::PlaceNode(MapNode*              mapNode,
                      const GeoPoint&       position,
                      const Style&          style,
                      const osgDB::Options* dbOptions ) :
-GeoPositionNode ( mapNode, position ),
+GeoPositionNode ( mapNode ),
 _style    ( style ),
 _dbOptions        ( dbOptions ),
+_geode            ( 0L ),
 _labelRotationRad ( 0. ),
-_followFixedCourse( false )
+_followFixedCourse( false ),
+_imageGeom(0)
 {
     init();
+    setPosition(position);
 }
 
 void
 PlaceNode::init()
 {
-    ScreenSpaceLayout::activate( this->getOrCreateStateSet() );
+    osg::StateSet* ss = this->getOrCreateStateSet();
+
+    // Draw place nodes in screen space.
+    ScreenSpaceLayout::activate(ss);
+
+    // Disable lighting for place nodes by default
+    ss->setDefine(OE_LIGHTING_DEFINE, osg::StateAttribute::OFF);
 
     osgEarth::clearChildren( getPositionAttitudeTransform() );
 
@@ -134,12 +151,6 @@ PlaceNode::init()
     }
 
     osg::ref_ptr<const InstanceSymbol> instance = _style.get<InstanceSymbol>();
-
-    // backwards compability, support for deprecated MarkerSymbol
-    if ( !instance.valid() && _style.has<MarkerSymbol>() )
-    {
-        instance = _style.get<MarkerSymbol>()->convertToInstanceSymbol();
-    }
 
     const IconSymbol* icon = instance->asIcon();
 
@@ -230,12 +241,13 @@ PlaceNode::init()
         }
 
         //We must actually rotate the geometry itself and not use a MatrixTransform b/c the 
-        //decluttering doesn't respect Transforms above the drawable.
-        osg::Geometry* imageGeom = AnnotationUtils::createImageGeometry( _image.get(), offset, 0, heading, scale );
-        if ( imageGeom )
+        //decluttering doesn't respect Transforms above the drawable.        
+        _imageGeom = AnnotationUtils::createImageGeometry(_image.get(), offset, 0, heading, scale);
+        if (_imageGeom)
         {
-            _geode->addDrawable( imageGeom );
-            imageBox = osgEarth::Utils::getBoundingBox( imageGeom );
+            _imageGeom->getOrCreateStateSet()->setDataVariance(osg::Object::DYNAMIC);
+            _geode->addDrawable(_imageGeom);
+            imageBox = osgEarth::Utils::getBoundingBox(_imageGeom);
         }    
     }
 
@@ -361,7 +373,7 @@ PlaceNode::updateLayoutData()
 void
 PlaceNode::setText( const std::string& text )
 {
-    if ( !_dynamic )
+    if ( !_dynamic && !_geode )
     {
         OE_WARN << LC << "Illegal state: cannot change a LabelNode that is not dynamic" << std::endl;
         return;
@@ -369,20 +381,23 @@ PlaceNode::setText( const std::string& text )
 
     _text = text;
 
-    for(unsigned i=0; i<_geode->getNumDrawables(); ++i)
+    if (_geode)
     {
-        osgText::Text* d = dynamic_cast<osgText::Text*>( _geode->getDrawable(i) );
-        if ( d )
+        for(unsigned i=0; i<_geode->getNumDrawables(); ++i)
         {
-			TextSymbol* symbol =  _style.getOrCreate<TextSymbol>();
-			osgText::String::Encoding text_encoding = osgText::String::ENCODING_UNDEFINED;
-			if ( symbol && symbol->encoding().isSet() )
-			{
-				text_encoding = AnnotationUtils::convertTextSymbolEncoding(symbol->encoding().value());
-			}
+            osgText::Text* d = dynamic_cast<osgText::Text*>( _geode->getDrawable(i) );
+            if ( d )
+            {
+			    TextSymbol* symbol =  _style.getOrCreate<TextSymbol>();
+			    osgText::String::Encoding text_encoding = osgText::String::ENCODING_UNDEFINED;
+			    if ( symbol && symbol->encoding().isSet() )
+			    {
+				    text_encoding = AnnotationUtils::convertTextSymbolEncoding(symbol->encoding().value());
+			    }
 
-            d->setText( text, text_encoding );
-            break;
+                d->setText( text, text_encoding );
+                break;
+            }
         }
     }
 }
@@ -400,9 +415,22 @@ PlaceNode::setStyle(const Style& style)
 void
 PlaceNode::setIconImage(osg::Image* image)
 {
-    // changing the icon requires a complete rebuild.
-    _image = image;
-    init();
+    if (_image != image)
+    {
+        _image = image;
+        if (_imageGeom)
+        {            
+            osg::Texture2D* texture = dynamic_cast<osg::Texture2D*>(_imageGeom->getStateSet()->getTextureAttribute(0, osg::StateAttribute::TEXTURE));
+            if (texture)
+            {                
+                texture->setImage(_image);
+            }            
+        }
+        else
+        {
+            init();
+        }
+    }
 }
 
 
@@ -411,10 +439,19 @@ PlaceNode::setDynamic( bool value )
 {
     GeoPositionNode::setDynamic( value );
     
-    for(unsigned i=0; i<_geode->getNumDrawables(); ++i)
+    if (_geode)
     {
-        _geode->getDrawable(i)->setDataVariance( 
-            value ? osg::Object::DYNAMIC : osg::Object::STATIC );
+        for(unsigned i=0; i<_geode->getNumDrawables(); ++i)
+        {
+            _geode->getDrawable(i)->setDataVariance( 
+                value ? osg::Object::DYNAMIC : osg::Object::STATIC );
+        }        
+    }
+
+    // Set the image geometry as dynamic so that we can update the texture if we want to.
+    if (_imageGeom)
+    {
+        _imageGeom->getOrCreateStateSet()->setDataVariance(osg::Object::DYNAMIC);
     }
 }
 
@@ -444,6 +481,7 @@ _followFixedCourse( false )
     }
 
     init();
+    setPosition(getPosition());
 }
 
 void
@@ -490,7 +528,7 @@ PlaceNode::getConfig() const
 #include <osgDB/InputStream>
 #include <osgDB/OutputStream>
 
-namespace
+namespace osgEarth { namespace Serializers { namespace PlaceNode
 {
     // functions
     static bool checkConfig(const osgEarth::Annotation::PlaceNode& node)
@@ -522,4 +560,4 @@ namespace
     {
         ADD_USER_SERIALIZER(Config);
     }
-}
+} } }

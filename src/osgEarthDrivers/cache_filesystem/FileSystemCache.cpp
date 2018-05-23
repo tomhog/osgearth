@@ -40,7 +40,6 @@ using namespace osgEarth::Threading;
 
 #define OSG_FORMAT "osgb"
 #define OSG_EXT   ".osgb"
-#define OSG_COMPRESS
 
 namespace
 {
@@ -122,9 +121,10 @@ namespace
         bool                              _binPathExists;
         std::string                       _metaPath;       // full path to the bin's metadata file
         std::string                       _binPath;        // full path to the bin's root folder
+        std::string                       _compressorName;
         osg::ref_ptr<osgDB::ReaderWriter> _rw;
         osg::ref_ptr<osgDB::Options>      _zlibOptions;
-        mutable Threading::Mutex          _mutex;
+        mutable Threading::ReadWriteMutex _mutex;
     };
 
     void writeMeta( const std::string& fullPath, const Config& meta )
@@ -298,12 +298,21 @@ namespace
 
         _rw = osgDB::Registry::instance()->getReaderWriterForExtension(OSG_FORMAT);
 
-#ifdef OSG_COMPRESS
-#ifdef OSGEARTH_HAVE_ZLIB
         _zlibOptions = Registry::instance()->cloneOrCreateOptions();
-        _zlibOptions->setPluginStringData("Compressor", "zlib");
-#endif        
-#endif
+
+        if (::getenv(OSGEARTH_ENV_DEFAULT_COMPRESSOR) != 0L)
+        {
+            _compressorName = ::getenv(OSGEARTH_ENV_DEFAULT_COMPRESSOR);
+        }
+        else
+        {
+            _compressorName = "zlib";
+        }
+
+        if (_compressorName.length() > 0)
+        {
+            _zlibOptions->setPluginStringData("Compressor", _compressorName);
+        }
     }
 
     const osgDB::Options*
@@ -320,7 +329,10 @@ namespace
         else
         {
             osgDB::Options* merged = Registry::cloneOrCreateOptions(dbo);
-            merged->setPluginStringData("Compressor", "zlib");
+            if (_compressorName.length())
+            {
+                merged->setPluginStringData("Compressor", _compressorName);
+            }
             return merged;
         }
     }
@@ -344,7 +356,7 @@ namespace
 
         osgDB::ReaderWriter::ReadResult r;
         {
-            ScopedMutexLock lock(_mutex);
+            ScopedReadLock lock(_mutex);
 
             r = _rw->readImage( path, dbo.get() );
             if ( !r.success() )
@@ -381,7 +393,7 @@ namespace
 
         osgDB::ReaderWriter::ReadResult r;
         {
-            ScopedMutexLock lock(_mutex);
+            ScopedReadLock lock(_mutex);
 
             r = _rw->readObject( path, dbo.get() );
             if ( !r.success() )
@@ -430,7 +442,7 @@ namespace
         bool objWriteOK = false;
         {
             // prevent cache contention:
-            ScopedMutexLock lock(_mutex);
+            ScopedWriteLock lock(_mutex);
 
             // make a home for it..
             if ( !osgDB::fileExists( osgDB::getFilePath(fileURI.full()) ) )
@@ -499,7 +511,7 @@ namespace
         URI fileURI( getHashedKey(key), _metaPath );
         std::string path( fileURI.full() + OSG_EXT );
 
-        ScopedMutexLock lock(_mutex);
+        ScopedWriteLock lock(_mutex);
         return ::unlink( path.c_str() ) == 0;
     }
 
@@ -510,7 +522,7 @@ namespace
         URI fileURI( getHashedKey(key), _metaPath );
         std::string path( fileURI.full() + OSG_EXT );
 
-        ScopedMutexLock lock(_mutex);
+        ScopedWriteLock lock(_mutex);
         return osgEarth::touchFile( path );
     }
 
@@ -518,8 +530,6 @@ namespace
     FileSystemCacheBin::purgeDirectory( const std::string& dir )
     {
         if ( !binValidForReading() ) return false;
-
-        ScopedMutexLock lock(_mutex);
 
         bool allOK = true;
         osgDB::DirectoryContents dc = osgDB::getDirectoryContents( dir );
@@ -563,7 +573,7 @@ namespace
         if ( !binValidForReading() )
             return false;
 
-        ScopedMutexLock lock(_mutex);
+        ScopedWriteLock lock(_mutex);
         std::string binDir = osgDB::getFilePath( _metaPath );
         return purgeDirectory( binDir );
     }
@@ -573,7 +583,7 @@ namespace
     {
         if ( !binValidForReading() ) return Config();
         
-        ScopedMutexLock lock(_mutex);
+        ScopedReadLock lock(_mutex);
 
         Config conf;
         conf.fromJSON( URI(_metaPath).getString(_zlibOptions.get()) );
@@ -586,7 +596,7 @@ namespace
     {
         if ( !binValidForWriting() ) return false;
         
-        ScopedMutexLock lock(_mutex);
+        ScopedWriteLock lock(_mutex);
 
         std::fstream output( _metaPath.c_str(), std::ios_base::out );
         if ( output.is_open() )
@@ -604,7 +614,7 @@ namespace
 
 /**
  * This driver defers loading of the source data to the appropriate OSG plugin. You
- * must explicity set an override profile when using this driver.
+ * must explicitly set an override profile when using this driver.
  *
  * For example, use this driver to load a simple jpeg file; then set the profile to
  * tell osgEarth its projection.

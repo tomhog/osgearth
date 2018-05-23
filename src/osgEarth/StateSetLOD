@@ -35,6 +35,8 @@ namespace osgEarth
      * By default, this class works like osg::LOD and uses the camera's 
      * distance to the bounding center as the value used to select active
      * statesets. You can change the metric by calling setGetValueFunction().
+     *
+     * @deprecated
      */
     class OSGEARTH_EXPORT StateSetLOD : public osg::Group
     {
@@ -82,7 +84,8 @@ namespace osgEarth
         
         typedef std::pair<float, float> MinMaxPair;
         typedef std::vector<MinMaxPair> RangeList;
-        typedef std::vector<osg::ref_ptr<osg::StateSet> > StateSetList;
+        typedef std::vector<osg::ref_ptr<osg::StateSet> > RefStateSetVector;
+        typedef RefStateSetVector StateSetList;
 
         RangeList    _ranges;
         StateSetList _stateSets;

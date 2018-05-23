@@ -19,17 +19,20 @@
 #include "SimpleOceanNode"
 #include "ElevationProxyImageLayer"
 #include "SimpleOceanShaders"
+#include <osgEarth/Lighting>
 #include <osgEarth/Map>
 #include <osgEarth/ShaderFactory>
-#include <osgEarth/TextureCompositor>
+#include <osgEarth/TerrainResources>
 #include <osgEarth/ImageUtils>
 #include <osgEarth/CullingUtils>
-#include <osgEarthUtil/SimplexNoise>
+#include <osgEarth/SimplexNoise>
 #include <osgEarthDrivers/engine_mp/MPTerrainEngineOptions>
+#include <osgEarthDrivers/engine_rex/RexTerrainEngineOptions>
 
 #include <osg/CullFace>
 #include <osg/Depth>
 #include <osg/Texture2D>
+#include <osg/Material>
 
 #define LC "[SimpleOceanNode] "
 
@@ -37,6 +40,7 @@ using namespace osgEarth;
 using namespace osgEarth::Util;
 using namespace osgEarth::SimpleOcean;
 using namespace osgEarth::Drivers::MPTerrainEngine;
+using namespace osgEarth::Drivers::RexTerrainEngine;
 
 namespace
 {
@@ -122,21 +126,21 @@ SimpleOceanNode::rebuild()
         if ( mno.enableLighting().isSet() )
             mno.enableLighting() = *mno.enableLighting();
 
-        MPTerrainEngineOptions mpoptions;
-        mpoptions.heightFieldSkirtRatio() = 0.0;      // don't want to see skirts
-        mpoptions.minLOD() = maxLOD().get(); // weird, I know
+        RexTerrainEngineOptions terrainoptions;
 
-        // so we can the surface from underwater:
-        mpoptions.clusterCulling() = false;       // want to see underwater
+        terrainoptions.enableBlending() = true;        // gotsta blend with the main node
 
-        mpoptions.enableBlending() = true;        // gotsta blend with the main node
+        terrainoptions.color() = baseColor().get();
 
-        mpoptions.color() = baseColor().get();
+        terrainoptions.tileSize() = 5;
 
-        mno.setTerrainOptions( mpoptions );
+        mno.setTerrainOptions( terrainoptions );
 
         // make the ocean's map node:
         MapNode* oceanMapNode = new MapNode( oceanMap, mno );
+
+        // set up the shaders.
+        osg::StateSet* ss = this->getOrCreateStateSet();
 
         // if the caller requested a mask layer, install that now.
         if ( maskLayer().isSet() )
@@ -154,7 +158,10 @@ SimpleOceanNode::rebuild()
             maskLayer()->visible() = false;
 
             ImageLayer* layer = new ImageLayer("ocean-mask", maskLayer().get());
-            oceanMap->addImageLayer( layer );
+            oceanMap->addLayer( layer );
+
+            ss->setDefine("OE_SIMPLE_OCEAN_USE_MASK");
+            OE_INFO << LC << "Using mask layer \"" << layer->getName() << "\"\n";
         }
 
         // otherwise, install a "proxy layer" that will use the elevation data in the map
@@ -166,31 +173,21 @@ SimpleOceanNode::rebuild()
             // parent map and turns them into encoded images for our shader to use.
             ImageLayerOptions epo( "ocean-proxy" );
             epo.cachePolicy() = CachePolicy::NO_CACHE;
-            oceanMap->addImageLayer( new ElevationProxyImageLayer(mapNode->getMap(), epo) );
+            epo.shared() = true;
+            epo.visible() = false;
+            epo.shareTexUniformName() = "oe_ocean_proxyTex";
+            epo.shareTexMatUniformName() = "oe_ocean_proxyMat";
+            oceanMap->addLayer( new ElevationProxyImageLayer(mapNode->getMap(), epo) );
+            OE_INFO << LC << "Using elevation proxy layer\n";
         }
 
         this->addChild( oceanMapNode );
 
-        // set up the shaders.
-        osg::StateSet* ss = this->getOrCreateStateSet();
-
         // install the shaders on the ocean map node.
         VirtualProgram* vp = VirtualProgram::getOrCreate( ss );
-        vp->setName( "osgEarth SimpleOcean" );
-        
+        vp->setName( "osgEarth SimpleOcean" );        
         Shaders shaders;
-        shaders.define("USE_OCEAN_MASK", maskLayer().isSet());
         shaders.loadAll(vp, 0L);
-
-        //// use the appropriate shader for the active technique:
-        //std::string vertSource = maskLayer().isSet() ? source_vertMask : source_vertProxy;
-        //std::string fragSource = maskLayer().isSet() ? source_fragMask : source_fragProxy;
-
-        //vp->setFunction( "oe_ocean_vertex",   vertSource, ShaderComp::LOCATION_VERTEX_VIEW );
-        //vp->setFunction( "oe_ocean_fragment", fragSource, ShaderComp::LOCATION_FRAGMENT_COLORING, 0.6f );
-
-        // install the slot attribute(s)
-        ss->getOrCreateUniform( "ocean_data", osg::Uniform::SAMPLER_2D )->set( 0 );
 
         // set up the options uniforms.
 
@@ -220,17 +217,15 @@ SimpleOceanNode::rebuild()
 
         // load up a surface texture
         osg::ref_ptr<osg::Image> surfaceImage;
-        ss->getOrCreateUniform( "ocean_has_surface_tex", osg::Uniform::BOOL )->set( false );
         if ( textureURI().isSet() )
         {
-            //TODO: enable cache support here?
             surfaceImage = textureURI()->getImage();
         }
 
-        if ( !surfaceImage.valid() )
-        {
-            surfaceImage = createSurfaceImage();
-        }
+        //if ( !surfaceImage.valid() )
+        //{
+        //    surfaceImage = createSurfaceImage();
+        //}
 
         if ( surfaceImage.valid() )
         {
@@ -240,9 +235,11 @@ SimpleOceanNode::rebuild()
             tex->setWrap  ( osg::Texture::WRAP_S, osg::Texture::REPEAT );
             tex->setWrap  ( osg::Texture::WRAP_T, osg::Texture::REPEAT );
 
-            ss->setTextureAttributeAndModes( 2, tex, 1 );
-            ss->getOrCreateUniform( "ocean_surface_tex", osg::Uniform::SAMPLER_2D )->set( 2 );
-            ss->getOrCreateUniform( "ocean_has_surface_tex", osg::Uniform::BOOL )->set( true );
+            ss->setTextureAttributeAndModes( 5, tex, 1 );
+            ss->getOrCreateUniform( "ocean_surface_tex", osg::Uniform::SAMPLER_2D )->set( 5 );
+
+            ss->setDefine("OE_SIMPLE_OCEAN_USE_TEXTURE");
+            OE_INFO << LC << "Using a surface texture (" << surfaceImage->getFileName() << ")\n";
         }
 
         // remove backface culling so we can see underwater
@@ -252,7 +249,7 @@ SimpleOceanNode::rebuild()
             osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE );
 
         // Material.
-        osg::Material* m = new osg::Material();
+        osg::Material* m = new osgEarth::MaterialGL3();
         m->setAmbient(m->FRONT_AND_BACK, osg::Vec4(.5,.5,.5,1));
         m->setDiffuse(m->FRONT_AND_BACK, osg::Vec4(1,1,1,1));
         m->setSpecular(m->FRONT_AND_BACK, osg::Vec4(0.2,0.2,0.2,1));

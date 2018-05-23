@@ -1,4 +1,5 @@
 #version $GLSL_VERSION_STR
+$GLSL_DEFAULT_PRECISION_FLOAT
 
 #pragma vp_name       REX Engine - Vertex
 #pragma vp_entryPoint oe_rexEngine_vert
@@ -17,6 +18,7 @@ out vec4 oe_layer_tilec;
 out vec3 oe_UpVectorView;
 
 out float oe_rex_morphFactor;
+flat out int oe_terrain_vertexMarker;
 
 void oe_rexEngine_vert(inout vec4 vertexModel)
 {
@@ -28,8 +30,11 @@ void oe_rexEngine_vert(inout vec4 vertexModel)
 	
     // "up" vector at this vertex in view space, which we will later
     // need in order to elevate the terrain
-	oe_UpVectorView = normalize(gl_NormalMatrix*vp_Normal);
+    oe_UpVectorView = normalize(gl_NormalMatrix*vp_Normal);
 
     // initialize:
     oe_rex_morphFactor = 0.0;
+
+    // Extract the ertex type marker
+    oe_terrain_vertexMarker = int(oe_layer_tilec.z);
 }

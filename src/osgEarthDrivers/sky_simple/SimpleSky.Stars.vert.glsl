@@ -1,4 +1,5 @@
 #version $GLSL_VERSION_STR
+$GLSL_DEFAULT_PRECISION_FLOAT
 
 uniform vec3 atmos_v3LightDir; 
 uniform mat4 osg_ViewMatrixInverse; 
@@ -13,9 +14,9 @@ float remap( float val, float vmin, float vmax, float r0, float r1 )
 
 void main() 
 { 
-    osg_FrontColor = gl_Color; 
-    gl_PointSize = gl_Color.r * 14.0; 
-    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex; 
+    osg_FrontColor = gl_Color;
+    gl_PointSize = gl_Color.r * 14.0;
+    gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
     vec3 eye = osg_ViewMatrixInverse[3].xyz; 
     float hae = length(eye) - 6378137.0; 
     // highness: visibility increases with altitude

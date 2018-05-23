@@ -169,7 +169,7 @@ void
 createTrackNodes( MapNode* mapNode, osg::Group* parent, const TrackNodeFieldSchema& schema, TrackSims& sims )
 {
     // load an icon to use:
-    osg::ref_ptr<osg::Image> srcImage = osgDB::readImageFile( ICON_URL );
+    osg::ref_ptr<osg::Image> srcImage = osgDB::readRefImageFile( ICON_URL );
     osg::ref_ptr<osg::Image> image;
     ImageUtils::resizeImage( srcImage.get(), ICON_SIZE, ICON_SIZE, image );
 
@@ -184,7 +184,7 @@ createTrackNodes( MapNode* mapNode, osg::Group* parent, const TrackNodeFieldSche
 
         GeoPoint pos(geoSRS, lon0, lat0);
 
-        TrackNode* track = new TrackNode(mapNode, pos, image, schema);
+        TrackNode* track = new TrackNode(mapNode, pos, image.get(), schema);
 
         track->setFieldValue( FIELD_NAME,     Stringify() << "Track:" << i );
         track->setFieldValue( FIELD_POSITION, Stringify() << s_format(pos) );

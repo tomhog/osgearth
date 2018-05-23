@@ -23,10 +23,9 @@
 #define OSGEARTH_VIRTUAL_PROGRAM_H 1
 
 #include <osgEarth/Common>
-#include <osgEarth/Revisioning>
 #include <osgEarth/ThreadingUtils>
-#include <osgEarth/ColorFilter>
 #include <osgEarth/Containers>
+#include <osgEarth/optional>
 #include <osg/Shader>
 #include <osg/Program>
 #include <osg/StateAttribute>
@@ -37,6 +36,10 @@
 #if defined(OSG_GLES2_AVAILABLE)
 #    define GLSL_VERSION                 100
 #    define GLSL_VERSION_STR             "100"
+#    define GLSL_DEFAULT_PRECISION_FLOAT "precision highp float;"
+#elif defined(OSG_GLES3_AVAILABLE)
+#    define GLSL_VERSION                 300
+#    define GLSL_VERSION_STR             "300 es"
 #    define GLSL_DEFAULT_PRECISION_FLOAT "precision highp float;"
 #elif defined(OSG_GL3_AVAILABLE)
 #    define GLSL_VERSION                 330
@@ -175,9 +178,12 @@ namespace osgEarth
         /** Generates the shaders. */
         void prepare();
 
+    public:
         /** Called from the draw context to resize shader buffers as necessary (OSG) */
-        virtual void resizeGLObjectBuffers(unsigned maxSize);
+        void resizeGLObjectBuffers(unsigned maxSize);
 
+        /** Called by OSG to release GPu memory associated with the object */
+        void releaseGLObjects(osg::State* state) const;
 
     protected:
         virtual ~PolyShader() { }
@@ -195,11 +201,6 @@ namespace osgEarth
         // Same shader, but set up for injection into a different stage
         osg::ref_ptr<osg::Shader>    _geomShader;
         osg::ref_ptr<osg::Shader>    _tessevalShader;
-
-        // shader source before running thru the preprocessor. Keep this around so that
-        // someone can call VirtualProgram::getShaders and have access to code that has
-        // not been set up for ShaderFactory.
-        //std::string                  _originalSource;
 
         bool                         _dirty;
     };
@@ -297,6 +298,12 @@ namespace osgEarth
         void setInheritShaders( bool value );
         bool getInheritShaders() const { return _inherit; }
 
+        /**
+        * Ability to add an extension to the VP
+        */
+        bool addGLSLExtension(const std::string& extension);
+        bool hasGLSLExtension(const std::string& extension) const;
+        bool removeGLSLExtension(const std::string& extension);
     public: 
         /**
          * Constructs a new VP
@@ -365,7 +372,7 @@ namespace osgEarth
         /** Enable logging to the console, for debugging. */
         void setShaderLogging( bool log );
 
-        /** Enable logging to a file, for deugging. */
+        /** Enable logging to a file, for debugging. */
         void setShaderLogging( bool log, const std::string& filepath );
 
         /** Gets whether the accept callbacks vary per frame */
@@ -377,6 +384,10 @@ namespace osgEarth
         /** Inheritance mask */
         void setMask(unsigned mask) { _mask = mask; }
         unsigned getMask() const { return _mask; }
+
+        /** Sets whether this VP is "abstract", i.e. pure virtual, and cannot be compiled on its own */
+        void setIsAbstract(bool value) { _isAbstract = value; }
+        bool getIsAbstract() const { return _isAbstract; }
 
     public: // StateAttribute
         virtual void compileGLObjects(osg::State& state) const;
@@ -409,6 +420,7 @@ namespace osgEarth
 
         typedef unsigned                              ShaderID;
         typedef vector_map<ShaderID, ShaderEntry>     ShaderMap;
+        typedef std::set<std::string>                 ExtensionsSet;
         typedef std::map< std::string, std::string >  AttribAliasMap;
         typedef std::pair< std::string, std::string > AttribAlias;
         typedef std::vector< AttribAlias >            AttribAliasVector;
@@ -469,6 +481,8 @@ namespace osgEarth
         // _dataModelMutex protects access to this member.
         ShaderMap _shaderMap;
 
+        ExtensionsSet _globalExtensions;
+
         // per-context cached shader map for thread-safe reuse without constant reallocation.
         struct ApplyVars
         {
@@ -493,6 +507,8 @@ namespace osgEarth
 
         bool _logShaders;
         std::string _logPath;
+
+        bool _isAbstract;
 
         AttribAliasMap _attribAliases;
 

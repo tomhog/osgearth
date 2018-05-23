@@ -40,6 +40,7 @@
 #
 #include "gdal.h"
 
+<<<<<<< HEAD
 MESSAGE("Specialized FindGDAL Called")
 if( NOT $ENV{GDAL_LIBRARY} STREQUAL "" )
     SET(GDAL_LIBRARY $ENV{GDAL_LIBRARY})
@@ -129,6 +130,64 @@ find_library(GDAL_LIBRARY
      ${_gdal_libpath}
   PATH_SUFFIXES lib
   PATHS
+=======
+SET(GDAL_DIR "" CACHE PATH "Root folder of GDAL dependency")
+
+FIND_PATH(GDAL_INCLUDE_DIR gdal.h
+  PATHS
+    ${GDAL_DIR}
+    $ENV{GDAL_DIR}
+  NO_DEFAULT_PATH
+  PATH_SUFFIXES include include/gdal
+)
+
+FIND_PATH(GDAL_INCLUDE_DIR gdal.h
+  PATHS
+    ${GDAL_DIR}/include
+    ~/Library/Frameworks/gdal.framework/Headers
+    /Library/Frameworks/gdal.framework/Headers
+    /usr/local/include/gdal
+    /usr/local/include/GDAL
+    /usr/local/include
+    /usr/include/gdal
+    /usr/include/GDAL
+    /usr/include
+    /sw/include/gdal 
+    /sw/include/GDAL 
+    /sw/include # Fink
+    /opt/local/include/gdal
+    /opt/local/include/GDAL
+    /opt/local/include # DarwinPorts
+    /opt/csw/include/gdal
+    /opt/csw/include/GDAL
+    /opt/csw/include # Blastwave
+    /opt/include/gdal
+    /opt/include/GDAL
+    /opt/include
+    c:/Program Files/FWTools2.1.0/include
+)
+
+FIND_LIBRARY(GDAL_LIBRARY 
+  NAMES
+    gdal gdal_i gdal1.8.0 gdal1.7.0 gdal1.6.0 gdal1.5.0 gdal1.4.0 gdal1.3.2 GDAL 
+  PATHS
+    c:/Program Files/FWTools2.1.0/lib 
+    ${GDAL_DIR}/lib
+    $ENV{GDAL_DIR}
+  NO_DEFAULT_PATH
+  PATH_SUFFIXES lib64 lib
+)
+
+FIND_LIBRARY(GDAL_LIBRARY 
+  NAMES
+    gdal gdal_i gdal1.8.0 gdal1.7.0 gdal1.6.0 gdal1.5.0 gdal1.4.0 gdal1.3.2 GDAL 
+  PATHS
+    ${GDAL_DIR}/lib
+    ~/Library/Frameworks
+    /Library/Frameworks
+    /usr/local
+    /usr
+>>>>>>> master
     /sw
     /opt/local
     /opt/csw

@@ -41,6 +41,9 @@
 #include <osgEarthAnnotation/AnnotationRegistry>
 #include <osgEarth/ScreenSpaceLayout>
 #include <osgEarth/TerrainEngineNode>
+#include <osgEarth/NodeUtils>
+#include <osgEarth/FileUtils>
+#include <osgEarth/GLUtils>
 
 #include <osgEarth/XmlUtils>
 #include <osgEarth/StringUtils>
@@ -51,7 +54,7 @@
 #include <osgDB/WriteFile>
 #include <osgGA/StateSetManipulator>
 #include <osgGA/AnimationPathManipulator>
-#include <osgViewer/View>
+#include <osgViewer/Viewer>
 #include <osgViewer/ViewerEventHandlers>
 
 #define KML_PUSHPIN_URL "../data/placemark32.png"
@@ -86,7 +89,7 @@ namespace
     // flies to a viewpoint in response to control event (click)
     struct ClickViewpointHandler : public ControlEventHandler
     {
-        ClickViewpointHandler( const Viewpoint& vp, osgGA::CameraManipulator* manip ) 
+        ClickViewpointHandler( const Viewpoint& vp, osgGA::CameraManipulator* manip )
             : _vp(vp), _manip( dynamic_cast<EarthManipulator*>(manip) ) { }
 
         Viewpoint         _vp;
@@ -164,7 +167,7 @@ Control*
 MouseCoordsControlFactory::create(MapNode*         mapNode,
                                   osgViewer::View* view     ) const
 {
-    // readout for coordinates under the mouse   
+    // readout for coordinates under the mouse
     LabelControl* readout = new LabelControl();
     readout->setHorizAlign( Control::ALIGN_RIGHT );
     readout->setVertAlign( Control::ALIGN_BOTTOM );
@@ -243,21 +246,72 @@ AnnotationGraphControlFactory::create(osg::Node*       graph,
 
 //------------------------------------------------------------------------
 
+std::string getAttributionString(Map* map)
+{
+    StringSet attributions;
+    map->getAttributions(attributions);
+    std::stringstream buf;
+    for (StringSet::iterator itr = attributions.begin(); itr != attributions.end(); ++itr)
+    {
+        buf << *itr << std::endl;
+    }
+
+    return buf.str();
+}
+
+class AttributeCallback : public osgEarth::MapCallback
+{
+public:
+    AttributeCallback(LabelControl* label, MapNode* mapNode) :
+        _label(label),
+        _mapNode(mapNode)
+    {
+    }
+
+    virtual void onMapModelChanged(const MapModelChange& change)
+    {
+        osg::ref_ptr< LabelControl > label;
+        osg::ref_ptr< MapNode > mapNode;
+
+        StringVector attributions;
+        if (_mapNode.lock(mapNode) && _label.lock(label))
+        {
+            label->setText(getAttributionString(_mapNode->getMap()));
+        }
+    }
+
+    osg::observer_ptr< LabelControl > _label;
+    osg::observer_ptr< MapNode > _mapNode;
+};
+
+Control* AttributionControlFactory::create(MapNode* mapNode) const
+{
+    // readout for coordinates under the mouse
+    LabelControl* credits = new LabelControl();
+    credits->setHorizAlign(Control::ALIGN_CENTER);
+    credits->setVertAlign(Control::ALIGN_BOTTOM);
+    credits->setText(getAttributionString(mapNode->getMap()));
+    mapNode->getMap()->addMapCallback(new AttributeCallback(credits, mapNode));
+    return credits;
+}
+
+//------------------------------------------------------------------------
+
 #undef  LC
 #define LC "[MapNodeHelper] "
 
 osg::Group*
-MapNodeHelper::load(osg::ArgumentParser&  args,
-                    osgViewer::View*      view,
-                    Container*            userContainer,
-                    const osgDB::Options* readOptions) const
+MapNodeHelper::load(osg::ArgumentParser&   args,
+                    osgViewer::ViewerBase* viewer,
+                    Container*             userContainer,
+                    const osgDB::Options*  readOptions) const
 {
     // do this first before scanning for an earth file
     std::string outEarth;
     args.read( "--out-earth", outEarth );
 
     osg::ref_ptr<osgDB::Options> myReadOptions = Registry::cloneOrCreateOptions(readOptions);
-    
+
     Config c;
     c.add("elevation_smoothing", false);
     TerrainOptions to(c);
@@ -268,7 +322,7 @@ MapNodeHelper::load(osg::ArgumentParser&  args,
     myReadOptions->setPluginStringData("osgEarth.defaultOptions", defMNO.getConfig().toJSON());
 
     // read in the Earth file:
-    osg::Node* node = osgDB::readNodeFiles(args, myReadOptions.get());
+    osg::ref_ptr<osg::Node> node = osgDB::readNodeFiles(args, myReadOptions.get());
 
     osg::ref_ptr<MapNode> mapNode;
     if ( !node )
@@ -285,7 +339,7 @@ MapNodeHelper::load(osg::ArgumentParser&  args,
     }
     else
     {
-        mapNode = MapNode::get(node);
+        mapNode = MapNode::get(node.get());
         if ( !mapNode.valid() )
         {
             OE_WARN << LC << "Loaded scene graph does not contain a MapNode - aborting" << std::endl;
@@ -293,10 +347,17 @@ MapNodeHelper::load(osg::ArgumentParser&  args,
         }
     }
 
-    // warn about not having an earth manip
-    if ( view )
+    // collect the views
+    osgViewer::Viewer::Views views;
+    if (viewer)
     {
-        EarthManipulator* manip = dynamic_cast<EarthManipulator*>(view->getCameraManipulator());
+        viewer->getViews(views);
+    }
+
+    // warn about not having an earth manip
+    for (osgViewer::Viewer::Views::iterator view = views.begin(); view != views.end(); ++view)
+    {
+        EarthManipulator* manip = dynamic_cast<EarthManipulator*>((*view)->getCameraManipulator());
         if ( manip == 0L )
         {
             OE_WARN << LC << "Helper used before installing an EarthManipulator" << std::endl;
@@ -305,13 +366,13 @@ MapNodeHelper::load(osg::ArgumentParser&  args,
 
     // a root node to hold everything:
     osg::Group* root = new osg::Group();
-    
+
     root->addChild( node );
 
-    // parses common cmdline arguments.
-    if ( view )
+    // parses common cmdline arguments and apply to the first view:
+    if ( !views.empty() )
     {
-        parse( mapNode.get(), args, view, root, userContainer );
+        parse( mapNode.get(), args, views.front(), root, userContainer );
     }
 
     // Dump out an earth file if so directed.
@@ -321,12 +382,19 @@ MapNodeHelper::load(osg::ArgumentParser&  args,
         osgDB::writeNodeFile( *mapNode, outEarth );
     }
 
-    // configures the viewer with some stock goodies
-    if ( view )
+    // configures each view with some stock goodies
+    for (osgViewer::Viewer::Views::iterator view = views.begin(); view != views.end(); ++view)
     {
-        configureView( view );
+        configureView( *view );
     }
-    
+
+#ifdef OSG_GL3_AVAILABLE
+    if (viewer)
+    {
+        viewer->setRealizeOperation(new GL3RealizeOperation());
+    }
+#endif
+
     return root;
 }
 
@@ -381,12 +449,21 @@ MapNodeHelper::parse(MapNode*             mapNode,
 
     std::string imageExtensions;
     args.read("--image-extensions", imageExtensions);
-    
+
     // animation path:
     std::string animpath;
     if ( args.read("--path", animpath) )
     {
         view->setCameraManipulator( new osgGA::AnimationPathManipulator(animpath) );
+    }
+
+    // vertical field of view:
+    float vfov = -1.0f;
+    if (args.read("--vfov", vfov) && vfov > 0.0f)
+    {
+        double fov, ar, n, f;
+        view->getCamera()->getProjectionMatrixAsPerspective(fov, ar, n, f);
+        view->getCamera()->setProjectionMatrixAsPerspective(vfov, ar, n, f);
     }
 
     // Install a new Canvas for our UI controls, or use one that already exists.
@@ -444,7 +521,7 @@ MapNodeHelper::parse(MapNode*             mapNode,
                     canvas->addControl( c );
                 }
             }
-            root->addChild( kml );
+            mapNode->addChild( kml );
         }
         else
         {
@@ -452,21 +529,15 @@ MapNodeHelper::parse(MapNode*             mapNode,
         }
     }
 
-    //// Configure the de-cluttering engine for labels and annotations:
-    //if ( !screenSpaceLayoutConf.empty() )
-    //{
-    //    ScreenSpaceLayout::setOptions( ScreenSpaceLayoutOptions(screenSpaceLayoutConf) );
-    //}
-
     // Configure the mouse coordinate readout:
     if ( useCoords )
-    { 
+    {
         LabelControl* readout = new LabelControl();
         readout->setBackColor( Color(Color::Black, 0.8) );
         readout->setHorizAlign( Control::ALIGN_RIGHT );
         readout->setVertAlign( Control::ALIGN_BOTTOM );
 
-        Formatter* formatter = 
+        Formatter* formatter =
             useMGRS ? (Formatter*)new MGRSFormatter(MGRSFormatter::PRECISION_1M, 0L, MGRSFormatter::USE_SPACES) :
             useDMS  ? (Formatter*)new LatLongFormatter(LatLongFormatter::FORMAT_DEGREES_MINUTES_SECONDS) :
             useDD   ? (Formatter*)new LatLongFormatter(LatLongFormatter::FORMAT_DECIMAL_DEGREES) :
@@ -479,9 +550,21 @@ MapNodeHelper::parse(MapNode*             mapNode,
         canvas->addControl( readout );
     }
 
+
+    // Add the credits display
+    canvas->addControl(AttributionControlFactory().create(mapNode));
+
     // Configure for an ortho camera:
     if ( args.read("--ortho") )
     {
+        EarthManipulator* em = dynamic_cast<EarthManipulator*>(view->getCameraManipulator());
+        if (em)
+        {
+            double V, A, N, F;
+            view->getCamera()->getProjectionMatrixAsPerspective(V, A, N, F);
+            em->setInitialVFOV( V );
+        }
+
         view->getCamera()->setProjectionMatrixAsOrtho(-1, 1, -1, 1, 0, 1);
     }
 
@@ -538,7 +621,7 @@ MapNodeHelper::parse(MapNode*             mapNode,
             mapNode->getMap()->beginUpdate();
             for( ImageLayerVector::iterator i = imageLayers.begin(); i != imageLayers.end(); ++i )
             {
-                mapNode->getMap()->addImageLayer( i->get() );
+                mapNode->getMap()->addLayer( i->get() );
             }
             mapNode->getMap()->endUpdate();
         }
@@ -550,17 +633,6 @@ MapNodeHelper::parse(MapNode*             mapNode,
     if ( !vertScaleConf.empty() )
     {
         mapNode->getTerrainEngine()->addEffect( new VerticalScale(vertScaleConf) );
-    }
-
-    // Install a contour map effect.
-    if (args.read("--contourmap"))
-    {
-        mapNode->addExtension(Extension::create("contourmap", ConfigOptions()));
-
-        // with the cmdline switch, hids all the image layer so we can see the contour map.
-        for (unsigned i = 0; i < mapNode->getMap()->getNumImageLayers(); ++i) {
-            mapNode->getMap()->getImageLayerAt(i)->setVisible(false);
-        }
     }
 
     // Generic named value uniform with min/max.
@@ -591,6 +663,15 @@ MapNodeHelper::parse(MapNode*             mapNode,
         }
     }
 
+    while (args.find("--define") >= 0)
+    {
+        std::string name;
+        if (args.read("--define", name))
+        {
+            mapNode->getOrCreateStateSet()->setDefine(name);
+        }
+    }
+
     // Map inspector:
     if (args.read("--inspect"))
     {
@@ -606,7 +687,8 @@ MapNodeHelper::parse(MapNode*             mapNode,
     // Simple sky model:
     if (args.read("--sky"))
     {
-        mapNode->addExtension(Extension::create("sky_simple", ConfigOptions()) );
+        std::string ext = mapNode->getMap()->isGeocentric() ? "sky_simple" : "sky_gl";
+        mapNode->addExtension(Extension::create(ext, ConfigOptions()) );
     }
 
     // Simple ocean model:
@@ -623,7 +705,7 @@ MapNodeHelper::parse(MapNode*             mapNode,
         if (ext)
             mapNode->addExtension(ext);
     }
-    
+
 
     // Hook up the extensions!
     for(std::vector<osg::ref_ptr<Extension> >::const_iterator eiter = mapNode->getExtensions().begin();
@@ -654,12 +736,11 @@ MapNodeHelper::parse(MapNode*             mapNode,
             ShadowCaster* caster = new ShadowCaster();
             caster->setTextureImageUnit( unit );
             caster->setLight( view->getLight() );
-            caster->getShadowCastingGroup()->addChild( mapNode->getModelLayerGroup() );
-            //insertParent(caster, mapNode);
-            //root = findTopOfGraph(caster)->asGroup();
+            caster->getShadowCastingGroup()->addChild( mapNode->getLayerNodeGroup() );
+            caster->getShadowCastingGroup()->addChild(mapNode->getTerrainEngine());
             if ( mapNode->getNumParents() > 0 )
             {
-                insertGroup(caster, mapNode->getParent(0));
+                osgEarth::insertGroup(caster, mapNode->getParent(0));
             }
             else
             {
@@ -676,6 +757,9 @@ MapNodeHelper::parse(MapNode*             mapNode,
 void
 MapNodeHelper::configureView( osgViewer::View* view ) const
 {
+    // default uniform values:
+    GLUtils::setGlobalDefaults(view->getCamera()->getOrCreateStateSet());
+
     // add some stock OSG handlers:
     view->addEventHandler(new osgViewer::StatsHandler());
     view->addEventHandler(new osgViewer::WindowSizeHandler());
@@ -706,6 +790,7 @@ MapNodeHelper::usage() const
         << "  --image-extensions [ext,...]  : with --images, extensions to use\n"
         << "  --out-earth [file]            : write the loaded map to an earth file\n"
         << "  --uniform [name] [min] [max]  : create a uniform controller with min/max values\n"
+        << "  --define [name]               : install a shader #define\n"
         << "  --path [file]                 : load and playback an animation path\n"
         << "  --extension [name]            : loads a named extension\n";
 }
@@ -726,7 +811,7 @@ namespace
             _sky->setDateTime(DateTime(d.year(), d.month(), d.day(), value));
         }
     };
-    
+
     static std::string s_month[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
     struct SkyMonthSlider : public ui::ControlEventHandler
@@ -737,7 +822,7 @@ namespace
         void onValueChanged(ui::Control* control, float value )
         {
             int m = std::min((int)value, 11);
-            DateTime d = _sky->getDateTime();            
+            DateTime d = _sky->getDateTime();
             _sky->setDateTime(DateTime(d.year(), m, d.day(), d.hours()));
             _label->setText(s_month[m]);
         }
@@ -750,7 +835,7 @@ namespace
         ui::LabelControl* _label;
         void onValueChanged(ui::Control* control, float value )
         {
-            DateTime d = _sky->getDateTime();            
+            DateTime d = _sky->getDateTime();
             _sky->setDateTime(DateTime((int)value, d.month(), d.day(), d.hours()));
             _label->setText(Stringify() << (int)value);
         }
@@ -764,7 +849,8 @@ namespace
 
         void onValueChanged(ui::Control* control, float value )
         {
-            _sky->setMinimumAmbient(osg::Vec4(value,value,value,1));
+            if (_sky->getSunLight())
+                _sky->getSunLight()->setAmbient(osg::Vec4(value,value,value,1));
         }
     };
 }
@@ -786,14 +872,14 @@ ui::Control* SkyControlFactory::create(SkyNode* sky)
         skyHoursSlider->setHorizFill( true, 250 );
         skyHoursSlider->addEventHandler( new SkyHoursSlider(sky) );
         grid->setControl(2, r, new ui::LabelControl(skyHoursSlider) );
-    
+
         ++r;
         grid->setControl( 0, r, new ui::LabelControl("Month: ", 16) );
         ui::HSliderControl* skyMonthSlider = grid->setControl(1, r, new ui::HSliderControl( 0.0f, 12.0f, dt.month() ));
         skyMonthSlider->setHorizFill( true, 250 );
-        ui::LabelControl* monthLabel = grid->setControl(2, r, new ui::LabelControl(s_month[dt.month()]));
+        ui::LabelControl* monthLabel = grid->setControl(2, r, new ui::LabelControl(s_month[dt.month()-1]));
         skyMonthSlider->addEventHandler( new SkyMonthSlider(sky, monthLabel) );
-    
+
         ++r;
         grid->setControl( 0, r, new ui::LabelControl("Year: ", 16) );
         ui::HSliderControl* skyYearSlider = grid->setControl(1, r, new ui::HSliderControl( 1970.0f, 2061.0f, dt.year() ));
@@ -802,7 +888,7 @@ ui::Control* SkyControlFactory::create(SkyNode* sky)
         skyYearSlider->addEventHandler( new SkyYearSlider(sky, yearLabel) );
 
         ++r;
-        grid->setControl(0, r, new ui::LabelControl("Min.Ambient: ", 16) );
+        grid->setControl(0, r, new ui::LabelControl("Ambient Light: ", 16) );
         ui::HSliderControl* ambient = grid->setControl(1, r, new ui::HSliderControl(0.0f, 1.0f, sky->getSunLight()->getAmbient().r()));
         ambient->addEventHandler( new AmbientBrightnessHandler(sky) );
         grid->setControl(2, r, new ui::LabelControl(ambient) );

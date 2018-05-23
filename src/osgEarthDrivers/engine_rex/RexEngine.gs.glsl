@@ -1,4 +1,5 @@
 #version $GLSL_VERSION_STR
+$GLSL_DEFAULT_PRECISION_FLOAT
 
 
 #if 0 // currently unused - triangle discard implemented on CPU instead
@@ -8,10 +9,11 @@
 #pragma vp_location   geometry
 
 // Vertex Markers:
-#define MASK_MARKER_DISCARD  0.0
-#define MASK_MARKER_NORMAL   1.0
-#define MASK_MARKER_SKIRT    2.0
-#define MASK_MARKER_BOUNDARY 3.0
+#define VERTEX_MARKER_DISCARD  1
+#define VERTEX_MARKER_GRID     2
+#define VERTEX_MARKER_PATCH    4
+#define VERTEX_MARKER_BOUNDARY 8
+#define VERTEX_MARKER_SKIRT    16
 
 layout(triangles)      in;
 layout(triangle_strip) out;
@@ -27,7 +29,7 @@ void oe_rexEngine_gs(void)
     for(int i=0; i < 3; ++i )
     {
         VP_LoadVertex(i);
-        if ( oe_layer_tilec.z == MASK_MARKER_DISCARD )
+        if ( int(oe_layer_tilec.z) == VERTEX_MARKER_DISCARD )
             return;
     }
 

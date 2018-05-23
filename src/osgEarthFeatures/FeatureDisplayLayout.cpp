@@ -74,7 +74,8 @@ _cropFeatures  ( false ),
 _profileTiles ( false ),
 _priorityOffset( 0.0f ),
 _priorityScale ( 1.0f ),
-_minExpiryTime ( 0.0f )
+_minExpiryTime ( 0.0f ),
+_paged(true)
 {
     fromConfig( conf );
 }
@@ -91,6 +92,7 @@ FeatureDisplayLayout::fromConfig( const Config& conf )
     conf.getIfSet( "min_expiry_time",  _minExpiryTime );
     conf.getIfSet( "min_range",        _minRange );
     conf.getIfSet( "max_range",        _maxRange );
+    conf.getIfSet("paged", _paged);
     ConfigSet children = conf.children( "level" );
     for( ConfigSet::const_iterator i = children.begin(); i != children.end(); ++i )
         addLevel( FeatureLevel( *i ) );
@@ -109,6 +111,7 @@ FeatureDisplayLayout::getConfig() const
     conf.addIfSet( "min_expiry_time",  _minExpiryTime );
     conf.addIfSet( "min_range",        _minRange );
     conf.addIfSet( "max_range",        _maxRange );
+    conf.addIfSet("paged", _paged);
     for( Levels::const_iterator i = _levels.begin(); i != _levels.end(); ++i )
         conf.add( i->second.getConfig() );
     return conf;

@@ -34,6 +34,8 @@
 #include <osg/io_utils>
 #include <osg/MatrixTransform>
 #include <osg/Depth>
+#include <osgEarth/TerrainTileNode>
+#include <osgEarth/FileUtils>
 
 using namespace osgEarth;
 using namespace osgEarth::Util;
@@ -103,6 +105,35 @@ osg::Node* createPlane(osg::Node* node, const GeoPoint& pos, const SpatialRefere
     return positioner;
 }
 
+class CacheExtentNodeVisitor : public osg::NodeVisitor
+{
+public:
+    CacheExtentNodeVisitor(GeoExtent& extent):
+      osg::NodeVisitor(osg::NodeVisitor::TRAVERSE_ALL_CHILDREN ),
+          _extent(extent)
+      {
+      }
+
+      void apply(osg::Node& node)
+      {
+          TerrainTileNode* tile = dynamic_cast<TerrainTileNode*>(&node);
+          if (tile && tile->getKey().valid())
+          {              
+              if (tile->getKey().getExtent().intersects(_extent) && tile->getKey().getLevelOfDetail() < 11)
+              {
+                  // Set this tile to not expire.
+                  tile->setMinimumExpirationTime(DBL_MAX);
+                  OE_NOTICE << "Preloading children for " << tile->getKey().str() << std::endl;
+                  tile->loadChildren();
+              }
+          }          
+          traverse(node);
+      }
+
+      GeoExtent _extent;
+};
+
+
 int
 main(int argc, char** argv)
 {
@@ -110,8 +141,8 @@ main(int argc, char** argv)
     osgViewer::Viewer viewer(arguments);
 
     // load the .earth file from the command line.
-    osg::Node* earthNode = osgDB::readNodeFiles( arguments );
-    if (!earthNode)
+    osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFiles( arguments );
+    if (!earthNode.valid())
     {
         OE_NOTICE << "Unable to load earth model" << std::endl;
         return 1;
@@ -119,7 +150,7 @@ main(int argc, char** argv)
 
     osg::Group* root = new osg::Group();
 
-    osgEarth::MapNode * mapNode = osgEarth::MapNode::findMapNode( earthNode );
+    osgEarth::MapNode * mapNode = osgEarth::MapNode::findMapNode( earthNode.get() );
     if (!mapNode)
     {
         OE_NOTICE << "Could not find MapNode " << std::endl;
@@ -184,11 +215,11 @@ main(int argc, char** argv)
     losGroup->addChild( radialRelEditor );
 
     //Load a plane model.  
-    osg::ref_ptr< osg::Node >  plane = osgDB::readNodeFile("../data/cessna.osgb.5,5,5.scale");
+    osg::ref_ptr< osg::Node >  plane = osgDB::readRefNodeFile("../data/cessna.osgb.5,5,5.scale");
 
     //Create 2 moving planes
-    osg::Node* plane1 = createPlane(plane, GeoPoint(geoSRS, -121.656, 46.0935, 4133.06, ALTMODE_ABSOLUTE), mapSRS, 5000, 20);
-    osg::Node* plane2 = createPlane(plane, GeoPoint(geoSRS, -121.321, 46.2589, 1390.09, ALTMODE_ABSOLUTE), mapSRS, 3000, 5);
+    osg::Node* plane1 = createPlane(plane.get(), GeoPoint(geoSRS, -121.656, 46.0935, 4133.06, ALTMODE_ABSOLUTE), mapSRS, 5000, 20);
+    osg::Node* plane2 = createPlane(plane.get(), GeoPoint(geoSRS, -121.321, 46.2589, 1390.09, ALTMODE_ABSOLUTE), mapSRS, 3000, 5);
     root->addChild( plane1 );
     root->addChild( plane2 );
 
@@ -199,7 +230,7 @@ main(int argc, char** argv)
     tetheredLOS->setUpdateCallback( new LineOfSightTether( plane1, plane2 ) );
 
     //Create another plane and attach a RadialLineOfSightNode to it using the RadialLineOfSightTether
-    osg::Node* plane3 = createPlane(plane, GeoPoint(geoSRS, -121.463, 46.3548, 1348.71, ALTMODE_ABSOLUTE), mapSRS, 10000, 5);
+    osg::Node* plane3 = createPlane(plane.get(), GeoPoint(geoSRS, -121.463, 46.3548, 1348.71, ALTMODE_ABSOLUTE), mapSRS, 10000, 5);
     losGroup->addChild( plane3 );
     RadialLineOfSightNode* tetheredRadial = new RadialLineOfSightNode( mapNode );
     tetheredRadial->setRadius( 5000 );
@@ -229,5 +260,21 @@ main(int argc, char** argv)
     viewer.addEventHandler(new osgViewer::LODScaleHandler());
     viewer.addEventHandler(new osgGA::StateSetManipulator(viewer.getCamera()->getOrCreateStateSet()));
 
-    return viewer.run();
+    /*
+    TerrainTileNodeVisitor v;
+    root->accept(v);
+    */
+
+    GeoPoint center(geoSRS, -121.656, 46.0935, 4133.06, ALTMODE_ABSOLUTE);
+
+    GeoExtent extent(geoSRS, center.x() - 0.5, center.y() - 0.5, center.x() + 0.5, center.y() + 0.5);
+    CacheExtentNodeVisitor v(extent);
+
+    root->accept(v);
+
+    while (!viewer.done())
+    {        
+        viewer.frame();
+    }
+    return 0;
 }

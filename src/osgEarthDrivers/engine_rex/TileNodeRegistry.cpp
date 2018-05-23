@@ -18,6 +18,8 @@
 */
 #include "TileNodeRegistry"
 
+#include <osgEarth/Metrics>
+
 using namespace osgEarth::Drivers::RexTerrainEngine;
 using namespace osgEarth;
 
@@ -32,7 +34,8 @@ using namespace osgEarth;
 TileNodeRegistry::TileNodeRegistry(const std::string& name) :
 _name              ( name ),
 _revisioningEnabled( false ),
-_frameNumber       ( 0u )
+_frameNumber       ( 0u ),
+_notifyNeighbors   ( false )
 {
     //nop
 }
@@ -44,6 +47,11 @@ TileNodeRegistry::setRevisioningEnabled(bool value)
     _revisioningEnabled = value;
 }
 
+void
+TileNodeRegistry::setNotifyNeighbors(bool value)
+{
+    _notifyNeighbors = value;
+}
 
 void
 TileNodeRegistry::setMapRevision(const Revision& rev,
@@ -98,47 +106,60 @@ TileNodeRegistry::setDirty(const GeoExtent& extent,
 void
 TileNodeRegistry::addSafely(TileNode* tile)
 {
-    _tiles.insert( tile->getTileKey(), tile );
-    //_tiles[ tile->getTileKey() ] = tile;
+    _tiles.insert( tile->getKey(), tile );
+    
     if ( _revisioningEnabled )
         tile->setMapRevision( _maprev );
-
-    // check for tiles that are waiting on this tile, and notify them!
-    TileKeyOneToMany::iterator notifier = _notifiers.find( tile->getTileKey() );
-    if ( notifier != _notifiers.end() )
+    
+    // Start waiting on our neighbors
+    if (_notifyNeighbors)
     {
-        TileKeySet& listeners = notifier->second;
+        startListeningFor(tile->getKey().createNeighborKey(1, 0), tile);
+        startListeningFor(tile->getKey().createNeighborKey(0, 1), tile);
 
-        for(TileKeySet::iterator listener = listeners.begin(); listener != listeners.end(); ++listener)
+        // check for tiles that are waiting on this tile, and notify them!
+        TileKeyOneToMany::iterator notifier = _notifiers.find( tile->getKey() );
+        if ( notifier != _notifiers.end() )
         {
-            TileNode* listenerTile = _tiles.find( *listener );
-            if ( listenerTile )
+            TileKeySet& listeners = notifier->second;
+
+            for(TileKeySet::iterator listener = listeners.begin(); listener != listeners.end(); ++listener)
             {
-                listenerTile->notifyOfArrival( tile );
+                TileNode* listenerTile = _tiles.find( *listener );
+                if ( listenerTile )
+                {
+                    listenerTile->notifyOfArrival( tile );
+                }
             }
+            _notifiers.erase( notifier );
         }
-        _notifiers.erase( notifier );
+
+        OE_DEBUG << LC << _name 
+            << ": tiles=" << _tiles.size()
+            << ", notifiers=" << _notifiers.size()
+            << std::endl;
     }
 
-    OE_TEST << LC << _name 
-        << ": tiles=" << _tiles.size()
-        << ", notifiers=" << _notifiers.size()
-        << std::endl;
+    Metrics::counter("RexStats", "Tiles", _tiles.size());
 }
 
 void
 TileNodeRegistry::removeSafely(const TileKey& key)
 {
-    _tiles.erase( key );
-
-    for(TileKeyOneToMany::iterator i = _notifiers.begin(); i != _notifiers.end(); )
+    TileNode* tile = _tiles.find(key);
+    if (tile)
     {
-        i->second.erase( key );
+        if (_notifyNeighbors)
+        {
+            // remove neighbor listeners:
+            stopListeningFor(key.createNeighborKey(1, 0), tile);
+            stopListeningFor(key.createNeighborKey(0, 1), tile);
+        }
 
-        if ( i->second.size() == 0 )
-            _notifiers.erase( i++ ); // http://stackoverflow.com/a/8234813/4218920
-        else
-            ++i;
+        // remove the tile.
+        _tiles.erase( key );
+
+        Metrics::counter("RexStats", "Tiles", _tiles.size());
     }
 }
 
@@ -173,7 +194,7 @@ TileNodeRegistry::remove( TileNode* tile )
     if ( tile )
     {
         Threading::ScopedWriteLock exclusive( _tilesMutex );
-        removeSafely( tile->getTileKey() );
+        removeSafely( tile->getKey() );
     }
 }
   
@@ -230,22 +251,42 @@ TileNodeRegistry::empty() const
 }
 
 void
-TileNodeRegistry::listenFor(const TileKey& tileToWaitFor, TileNode* waiter)
+TileNodeRegistry::startListeningFor(const TileKey& tileToWaitFor, TileNode* waiter)
 {
-    Threading::ScopedWriteLock lock( _tilesMutex );
+    // ASSUME EXCLUSIVE LOCK
+
     TileNode* tile = _tiles.find( tileToWaitFor );
     if ( tile )
     {
-        OE_DEBUG << LC << waiter->getTileKey().str() << " listened for " << tileToWaitFor.str()
+        OE_DEBUG << LC << waiter->getKey().str() << " listened for " << tileToWaitFor.str()
             << ", but it was already in the repo.\n";
 
         waiter->notifyOfArrival( tile );
     }
     else
     {
-        OE_DEBUG << LC << waiter->getTileKey().str() << " listened for " << tileToWaitFor.str() << ".\n";
+        OE_DEBUG << LC << waiter->getKey().str() << " listened for " << tileToWaitFor.str() << ".\n";
         //_notifications[tileToWaitFor].push_back( waiter->getKey() );
-        _notifiers[tileToWaitFor].insert( waiter->getTileKey() );
+        _notifiers[tileToWaitFor].insert( waiter->getKey() );
+    }
+}
+
+void
+TileNodeRegistry::stopListeningFor(const TileKey& tileToWaitFor, TileNode* waiter)
+{
+    // ASSUME EXCLUSIVE LOCK
+
+    TileKeyOneToMany::iterator i = _notifiers.find(tileToWaitFor);
+    if (i != _notifiers.end())
+    {
+        // remove the waiter from this set:
+        i->second.erase(waiter->getKey());
+
+        // if the set is now empty, remove the set entirely
+        if (i->second.empty())
+        {
+            _notifiers.erase(i);
+        }
     }
 }
         
@@ -254,7 +295,7 @@ TileNodeRegistry::takeAny()
 {
     Threading::ScopedWriteLock exclusive( _tilesMutex );
     osg::ref_ptr<TileNode> tile = _tiles.begin()->second.tile.get();
-    removeSafely( tile->getTileKey() );
+    removeSafely( tile->getKey() );
     return tile.release();
 }
 
@@ -272,6 +313,8 @@ TileNodeRegistry::releaseAll(ResourceReleaser* releaser)
 
         _tiles.clear();
         _notifiers.clear();
+
+        Metrics::counter("RexStats", "Tiles", _tiles.size());
     }
 
     releaser->push(objects);

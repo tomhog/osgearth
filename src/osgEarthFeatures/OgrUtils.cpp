@@ -25,6 +25,26 @@
 
 using namespace osgEarth::Features;
 
+#ifndef GDAL_VERSION_AT_LEAST
+#define GDAL_VERSION_AT_LEAST(MAJOR, MINOR, REV) ((GDAL_VERSION_MAJOR>MAJOR) || (GDAL_VERSION_MAJOR==MAJOR && (GDAL_VERSION_MINOR>MINOR || (GDAL_VERSION_MINOR==MINOR && GDAL_VERSION_REV>=REV))))
+#endif
+
+#if GDAL_VERSION_AT_LEAST(2,1,0)
+#  define GDAL_HAS_M_TYPES
+#endif
+
+int IsFieldSet(OGRFeatureH handle, int i)
+{
+    // https://github.com/Toblerity/Fiona/issues/460
+    // GDAL 2.2 changed the behavior of OGR_F_IsFieldSet so that null fields will still be considered set.
+    // We consider unset or null fields to be the same, so we use OGR_F_IsFieldSetAndNotNull
+#if GDAL_VERSION_AT_LEAST(2,2,0)
+    return OGR_F_IsFieldSetAndNotNull(handle, i);
+#else
+    return OGR_F_IsFieldSet(handle, i);
+#endif
+}
+
 
 void
 OgrUtils::populate( OGRGeometryH geomHandle, Symbology::Geometry* target, int numPoints )
@@ -85,6 +105,7 @@ OgrUtils::createGeometry( OGRGeometryH geomHandle )
 
     OGRwkbGeometryType wkbType = wkbFlatten(OGR_G_GetGeometryType( geomHandle ));        
 
+<<<<<<< HEAD
     if (
         wkbType == wkbPolygon )
     {
@@ -92,17 +113,37 @@ OgrUtils::createGeometry( OGRGeometryH geomHandle )
     }
     else if (
         wkbType == wkbLineString  )
+=======
+    int numPoints, numGeoms;
+
+    switch (wkbType)
+>>>>>>> master
     {
-        int numPoints = OGR_G_GetPointCount( geomHandle );
+    case wkbPolygon:
+    case wkbPolygon25D:
+#ifdef GDAL_HAS_M_TYPES
+    case wkbPolygonM:
+    case wkbPolygonZM:
+#endif
+        output = createPolygon(geomHandle);
+        break;
+
+    case wkbLineString:
+    case wkbLineString25D:
+#ifdef GDAL_HAS_M_TYPES
+    case wkbLineStringM:
+    case wkbLineStringZM:
+#endif
+        numPoints = OGR_G_GetPointCount( geomHandle );
         output = new Symbology::LineString( numPoints );
         populate( geomHandle, output, numPoints );
-    }
-    else if (
-        wkbType == wkbLinearRing )
-    {
-        int numPoints = OGR_G_GetPointCount( geomHandle );
+        break;
+
+    case wkbLinearRing:
+        numPoints = OGR_G_GetPointCount( geomHandle );
         output = new Symbology::Ring( numPoints );
         populate( geomHandle, output, numPoints );
+<<<<<<< HEAD
     }
     else if ( 
         wkbType == wkbPoint )
@@ -117,9 +158,41 @@ OgrUtils::createGeometry( OGRGeometryH geomHandle )
         wkbType == wkbMultiLineString ||
         wkbType == wkbMultiPolygon )
     {
-        Symbology::MultiGeometry* multi = new Symbology::MultiGeometry();
+=======
+        break;
 
-        int numGeoms = OGR_G_GetGeometryCount( geomHandle );
+    case wkbPoint:
+    case wkbPoint25D:
+#ifdef GDAL_HAS_M_TYPES
+    case wkbPointM:
+    case wkbPointZM:
+#endif
+        numPoints = OGR_G_GetPointCount( geomHandle );
+        output = new Symbology::PointSet( numPoints );
+        populate( geomHandle, output, numPoints );
+        break;
+
+    case wkbGeometryCollection:
+    case wkbGeometryCollection25D:
+    case wkbMultiPoint:
+    case wkbMultiPoint25D:
+    case wkbMultiLineString:
+    case wkbMultiLineString25D:
+    case wkbMultiPolygon:
+    case wkbMultiPolygon25D:
+#ifdef GDAL_HAS_M_TYPES
+    case wkbGeometryCollectionM:
+    case wkbGeometryCollectionZM:
+    case wkbMultiPointM:
+    case wkbMultiPointZM:
+    case wkbMultiLineStringM:
+    case wkbMultiLineStringZM:
+    case wkbMultiPolygonM:
+    case wkbMultiPolygonZM:
+#endif
+>>>>>>> master
+        Symbology::MultiGeometry* multi = new Symbology::MultiGeometry();
+        numGeoms = OGR_G_GetGeometryCount( geomHandle );
         for( int n=0; n<numGeoms; n++ )
         {
             OGRGeometryH subGeomRef = OGR_G_GetGeometryRef( geomHandle, n );
@@ -129,8 +202,8 @@ OgrUtils::createGeometry( OGRGeometryH geomHandle )
                 if ( geom ) multi->getComponents().push_back( geom );
             }
         } 
-
         output = multi;
+        break;
     }
 
     return output;
@@ -307,7 +380,7 @@ OgrUtils::createFeature( OGRFeatureH handle, const SpatialReference* srs )
         {
         case OFTInteger:
             {     
-                if (OGR_F_IsFieldSet( handle, i ))
+                if (IsFieldSet( handle, i ))
                 {
                     int value = OGR_F_GetFieldAsInteger( handle, i );
                     feature->set( name, value );                    
@@ -320,7 +393,7 @@ OgrUtils::createFeature( OGRFeatureH handle, const SpatialReference* srs )
             break;
         case OFTReal:
             {
-                if (OGR_F_IsFieldSet( handle, i ))
+                if (IsFieldSet( handle, i ))
                 {
                     double value = OGR_F_GetFieldAsDouble( handle, i );
                     feature->set( name, value );
@@ -333,7 +406,7 @@ OgrUtils::createFeature( OGRFeatureH handle, const SpatialReference* srs )
             break;
         default:
             {
-                if (OGR_F_IsFieldSet( handle, i ))
+                if (IsFieldSet( handle, i ))
                 {
                     const char* value = OGR_F_GetFieldAsString(handle, i);
                     feature->set( name, std::string(value) );

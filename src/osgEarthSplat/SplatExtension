@@ -16,13 +16,14 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
+#if 0
 #ifndef OSGEARTH_SPLAT_SPLAT_EXTENSION
 #define OSGEARTH_SPLAT_SPLAT_EXTENSION 1
 
 #include "Export"
 #include "SplatOptions"
-#include "SplatTerrainEffect"
-#include "LandCoverTerrainEffect"
+#include "SplatLayerFactory"
+#include "GroundCoverLayerFactory"
 #include "Zone"
 
 #include <osgEarth/Extension>
@@ -80,11 +81,14 @@ namespace osgEarth { namespace Splat
 
     private:
         osg::ref_ptr<const osgDB::Options>   _dbo;
-        osg::ref_ptr<SplatTerrainEffect>     _splatEffect;
-        osg::ref_ptr<LandCoverTerrainEffect> _landCoverEffect;
+        osg::ref_ptr<SplatLayerFactory>      _splatLayerFactory;
+        osg::ref_ptr<GroundCoverLayerFactory>  _GroundCoverLayerFactory;
         osg::ref_ptr<ZoneSwitcher>           _zoneSwitcher;
+        int                                  _noiseTexUnit;
     };
 
 } } // namespace osgEarth::Splat
 
 #endif // OSGEARTH_SPLAT_SPLAT_EXTENSION
+
+#endif

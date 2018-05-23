@@ -44,12 +44,12 @@ namespace
         {
             const std::vector<TerrainShaderOptions::Code>& code = _options.code();
 
-            for(unsigned i=0; i<code.size(); ++i)
+            for (unsigned i = 0; i < code.size(); ++i)
             {
-		std::ostringstream oss;
-		oss << i;
+                std::ostringstream oss;
+                oss << i;
                 std::string fn = code[i]._uri.isSet() ? code[i]._uri->full() : "$code." + oss.str();
-                _package.add( fn, code[i]._source );
+                _package.add(fn, code[i]._source);
             }
         }
 
@@ -156,14 +156,7 @@ namespace
 
         void onUninstall(TerrainEngineNode* engine)
         {
-            if ( engine )
-            {
-                if ( _options.landCoverGroup().isSet() )
-                {
-                    //TODO
-                    //engine->removeLandCoverGroup( _options.landCoverGroup().get() );
-                }
-            }
+            //nop
         }
 
         const TerrainShaderOptions              _options;

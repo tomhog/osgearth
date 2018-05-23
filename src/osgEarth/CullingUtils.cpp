@@ -19,7 +19,7 @@
 #include <osgEarth/CullingUtils>
 #include <osgEarth/LineFunctor>
 #include <osgEarth/VirtualProgram>
-#include <osgEarth/DPLineSegmentIntersector>
+#include <osgUtil/LineSegmentIntersector>
 #include <osgEarth/GeoData>
 #include <osgEarth/Utils>
 #include <osg/ClusterCullingCallback>
@@ -30,6 +30,9 @@
 #include <osgUtil/CullVisitor>
 #include <osgUtil/IntersectionVisitor>
 #include <osgUtil/LineSegmentIntersector>
+#include <osgDB/ObjectWrapper>
+#include <osgDB/InputStream>
+#include <osgDB/OutputStream>
 
 using namespace osgEarth;
 
@@ -160,8 +163,8 @@ namespace
             node->accept( *this );
         }
 
-        void apply( osg::Geode& geode )
-        {            
+        void apply(osg::Drawable& drawable)
+        {
             if ( _pass == 1 )
             {
                 osg::Matrixd local2world;
@@ -171,8 +174,7 @@ namespace
                 osg::TemplatePrimitiveFunctor<ComputeMaxNormalLength> pass1;
                 pass1.set( _normalECEF, local2world, &_maxNormalLen );
 
-                for( unsigned i=0; i<geode.getNumDrawables(); ++i )
-                    geode.getDrawable(i)->accept( pass1 );
+                drawable.accept(pass1);
             }
 
             else // if ( _pass == 2 )
@@ -181,8 +183,8 @@ namespace
 
                 osg::TemplatePrimitiveFunctor<ComputeMaxRadius2> pass2;
                 pass2.set( center, &_maxRadius2 );
-                for( unsigned i=0; i<geode.getNumDrawables(); ++i )
-                    geode.getDrawable(i)->accept( pass2 );
+
+                drawable.accept(pass2);
             }
         }
 
@@ -261,17 +263,12 @@ namespace
             _matrixStack.push_back( osg::Matrixd::identity() );
         }
 
-        void apply( osg::Geode& geode )
+        void apply(osg::Drawable& drawable)
         {
             LineFunctor<ComputeMinDeviation> functor;
             functor.set( _matrixStack.back(), _ecefNormal, &_minDeviation );
-
-             for( unsigned i=0; i<geode.getNumDrawables(); ++i )
-             {
-                 geode.getDrawable(i)->accept( functor );
-             }
-
-             traverse(geode);
+            drawable.accept(functor);
+            traverse(drawable);
         }
 
         void apply( osg::Transform& xform )
@@ -678,7 +675,7 @@ void OcclusionCullingCallback::operator()(osg::Node* node, osg::NodeVisitor* nv)
                         osg::Vec3d vec = end-start; vec.normalize();
                         end -= vec*1.0;
 
-                        DPLineSegmentIntersector* i = new DPLineSegmentIntersector( start, end );
+                        osgUtil::LineSegmentIntersector* i = new osgUtil::LineSegmentIntersector( start, end );
                         i->setIntersectionLimit( osgUtil::Intersector::LIMIT_NEAREST );
                         osgUtil::IntersectionVisitor iv;
                         iv.setIntersector( i );
@@ -800,15 +797,9 @@ ProxyCullVisitor::distance(const osg::Vec3& coord,const osg::Matrix& matrix)
 void 
 ProxyCullVisitor::handle_cull_callbacks_and_traverse(osg::Node& node)
 {
-#if OSG_VERSION_GREATER_THAN(3,3,1)
     osg::Callback* callback = node.getCullCallback();
     if (callback) callback->run(&node, this);
     else traverse(node);
-#else
-    osg::NodeCallback* callback = node.getCullCallback();
-    if (callback) (*callback)(&node,this);
-    else traverse(node);
-#endif
 }
 
 void 
@@ -872,55 +863,54 @@ ProxyCullVisitor::apply(osg::Transform& node)
 }
 
 void 
-ProxyCullVisitor::apply(osg::Geode& node)
+ProxyCullVisitor::apply(osg::LOD& node)
 {
-    //OE_INFO << "Geode!" << std::endl;
+    ProxyCullVisitor::apply(static_cast<osg::Node&>(node));
+}
 
-    if ( isCulledByProxyFrustum(node) )
+void
+ProxyCullVisitor::apply(osg::Drawable& drawable)
+{
+    if ( isCulledByProxyFrustum(drawable) )
         return;
 
-    _cv->pushOntoNodePath( &node );
+    _cv->pushOntoNodePath( &drawable );
 
     // push the node's state.
-    osg::StateSet* node_state = node.getStateSet();
+    osg::StateSet* node_state = drawable.getStateSet();
     if (node_state) _cv->pushStateSet(node_state);
 
-    // traverse any call callbacks and traverse any children.
-    handle_cull_callbacks_and_traverse(node);
-
     osg::RefMatrix& matrix = *_cv->getModelViewMatrix();
-    for(unsigned int i=0;i<node.getNumDrawables();++i)
+    const osg::BoundingBox& bb = Utils::getBoundingBox(&drawable);
+
+    bool culledOut = false;
+
+    if( drawable.getCullCallback() )
     {
-        osg::Drawable* drawable = node.getDrawable(i);
-        const osg::BoundingBox& bb = Utils::getBoundingBox(drawable);
+        if (drawable.getCullCallback()->run(&drawable, _cv) == true)
+            culledOut = true;
+    }
 
-        if( drawable->getCullCallback() )
-        {
-#if OSG_VERSION_GREATER_THAN(3,3,1)
-            if( drawable->getCullCallback()->run(drawable, _cv) == true )
-                continue;
-#else
-            if( drawable->getCullCallback()->cull( _cv, drawable, &_cv->getRenderInfo() ) == true )
-                continue;
-#endif
-        }
-
-        //else
-        {
-            if (node.isCullingActive() && isCulledByProxyFrustum(bb)) continue;
-        }
+    if (!culledOut)
+    {
+        if (drawable.isCullingActive() && isCulledByProxyFrustum(bb)) 
+            culledOut = true;
+    }
 
 
-        if ( _cv->getComputeNearFarMode() && bb.valid())
-        {
-            if (!_cv->updateCalculatedNearFar(matrix,*drawable,false)) continue;
-        }
+    if ( !culledOut && _cv->getComputeNearFarMode() && bb.valid())
+    {
+        if (!_cv->updateCalculatedNearFar(matrix,drawable,false))
+            culledOut = true;
+    }
 
+    if (!culledOut)
+    {
         // need to track how push/pops there are, so we can unravel the stack correctly.
         unsigned int numPopStateSetRequired = 0;
 
         // push the geoset's state on the geostate stack.
-        osg::StateSet* stateset = drawable->getStateSet();
+        osg::StateSet* stateset = drawable.getStateSet();
         if (stateset)
         {
             ++numPopStateSetRequired;
@@ -954,14 +944,13 @@ ProxyCullVisitor::apply(osg::Geode& node)
         }
         else
         {
-            _cv->addDrawableAndDepth(drawable,&matrix,depth);
+            _cv->addDrawableAndDepth(&drawable,&matrix,depth);
         }
 
         for(unsigned int i=0;i< numPopStateSetRequired; ++i)
         {
             _cv->popStateSet();
         }
-
     }
 
     // pop the node's state off the geostate stack.
@@ -978,7 +967,7 @@ namespace
         "#version " GLSL_VERSION_STR "\n"
         GLSL_DEFAULT_PRECISION_FLOAT "\n"
         "uniform mat4 osg_ViewMatrix; \n"
-        "varying float oe_horizon_alpha; \n"
+        "out float oe_horizon_alpha; \n"
         "void oe_horizon_vertex(inout vec4 VertexVIEW) \n"
         "{ \n"
         "    const float scale     = 0.001; \n"                 // scale factor keeps dots&crosses in SP range
@@ -1002,7 +991,7 @@ namespace
     const char* horizon_fs =
         "#version " GLSL_VERSION_STR "\n"
         GLSL_DEFAULT_PRECISION_FLOAT "\n"
-        "varying float oe_horizon_alpha; \n"
+        "in float oe_horizon_alpha; \n"
         "void oe_horizon_fragment(inout vec4 color) \n"
         "{ \n"
         "    color.a *= oe_horizon_alpha; \n"
@@ -1101,18 +1090,36 @@ ClipToGeocentricHorizon::operator()(osg::Node* node, osg::NodeVisitor* nv)
 
 namespace
 {
+    Config dumpStateSet(const osg::StateSet* ss)
+    {
+        Config conf("StateSetAttrs");
+        for (osg::StateSet::AttributeList::const_iterator i = ss->getAttributeList().begin(); i != ss->getAttributeList().end(); ++i)
+        {
+            osg::StateAttribute* sa = i->second.first.get();
+            Config saconf(sa->className());
+            conf.add(saconf);
+        }
+        return conf;
+    }
+
+    Config dumpRenderLeaf(osgUtil::RenderLeaf* leaf)
+    {
+        Config conf("Leaf");
+        conf.add("Name", leaf->getDrawable()->getName());
+        conf.add("Depth", leaf->_depth);
+        if (leaf->getDrawable()->getStateSet())
+            conf.add(dumpStateSet(leaf->getDrawable()->getStateSet()));
+        return conf;
+    }
+
     Config dumpStateGraph(osgUtil::StateGraph* sg)
     {
         Config conf("StateGraph");
 
         Config leaves("Leaves");
         for(osgUtil::StateGraph::LeafList::const_iterator i = sg->_leaves.begin(); i != sg->_leaves.end(); ++i)
-        {
-            Config leaf("Leaf");
-            leaf.add("Name", i->get()->getDrawable()->getName());
-            leaf.add("Depth", i->get()->_depth);
-            leaves.add( leaf );
-        }
+            leaves.add(dumpRenderLeaf(i->get()));
+
         if ( !leaves.empty() )
             conf.add(leaves);
 
@@ -1134,8 +1141,18 @@ CullDebugger::dumpRenderBin(osgUtil::RenderBin* bin) const
     Config conf("RenderBin");
     if ( !bin->getName().empty() )
         conf.set("Name", bin->getName());
+    if (bin->getStateSet())
+        conf.set("StateSet", dumpStateSet(bin->getStateSet()));
+
     conf.set("BinNum", bin->getBinNum());
-    
+
+    Config leaves("Leaves");
+    for (osgUtil::RenderBin::RenderLeafList::const_iterator i = bin->getRenderLeafList().begin(); i != bin->getRenderLeafList().end(); ++i)
+        leaves.add(dumpRenderLeaf(*i));
+
+    if (!leaves.empty())
+        conf.add(leaves);
+
     Config sg("StateGraphList");
     sg.add("NumChildren", bin->getStateGraphList().size());
 
@@ -1158,3 +1175,41 @@ CullDebugger::dumpRenderBin(osgUtil::RenderBin* bin) const
 
     return conf;
 }
+
+//...................................................................
+
+void
+InstallViewportSizeUniform::operator()(osg::Node* node, osg::NodeVisitor* nv)
+{
+    osgUtil::CullVisitor* cv = dynamic_cast<osgUtil::CullVisitor*>(nv);
+    const osg::Camera* camera = cv->getCurrentCamera();
+    
+    osg::ref_ptr<osg::StateSet> ss;
+
+    if (camera && camera->getViewport())
+    {
+        ss = new osg::StateSet();
+        ss->addUniform(new osg::Uniform("oe_ViewportSize", osg::Vec2f(
+            camera->getViewport()->width(),
+            camera->getViewport()->height())));
+        cv->pushStateSet(ss.get());
+    }
+
+    traverse(node, nv);
+
+    if (ss.valid())
+        cv->popStateSet();
+}
+
+namespace osgEarth { namespace Serializers { namespace InstallViewportSizeUniform
+{
+    REGISTER_OBJECT_WRAPPER(
+        InstallViewportSizeUniform,
+        new osgEarth::InstallViewportSizeUniform,
+        osgEarth::InstallViewportSizeUniform,
+        "osg::Object osg::NodeCallback osgEarth::InstallViewportSizeUniform")
+    {
+        // no properties
+    }
+} } }
+

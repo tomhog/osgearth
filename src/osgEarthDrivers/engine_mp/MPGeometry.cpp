@@ -144,9 +144,12 @@ MPGeometry::renderPrimitiveSets(osg::State& state,
             // This should only happen is the layer ordering changes;
             // If layers are added or removed, the Tile gets rebuilt and
             // the point is moot.
+            ImageLayerVector layers;
+            _frame.getLayers(layers);
+
             std::vector<Layer> reordered;
-            const ImageLayerVector& layers = _frame.imageLayers();
             reordered.reserve( layers.size() );
+
             for( ImageLayerVector::const_iterator i = layers.begin(); i != layers.end(); ++i )
             {
                 std::vector<Layer>::iterator j = std::find( _layers.begin(), _layers.end(), i->get()->getUID() );
@@ -162,21 +165,13 @@ MPGeometry::renderPrimitiveSets(osg::State& state,
     // access the GL extensions interface for the current GC:
     const osg::Program::PerContextProgram* pcp = 0L;
 
-#if OSG_MIN_VERSION_REQUIRED(3,3,3)
 	osg::ref_ptr<osg::GLExtensions> ext;
-#else
-    osg::ref_ptr<osg::GL2Extensions> ext;
-#endif
     unsigned contextID;
 
     if (_supportsGLSL)
     {
         contextID = state.getContextID();
-#if OSG_MIN_VERSION_REQUIRED(3,3,3)
 		ext = osg::GLExtensions::Get(contextID, true);
-#else
-		ext = osg::GL2Extensions::Get( contextID, true );
-#endif
         pcp = state.getLastAppliedProgramObject();
     }
 
@@ -232,23 +227,13 @@ MPGeometry::renderPrimitiveSets(osg::State& state,
         state.setTexCoordPointer( _imageUnit+1, _tileCoords.get() );
     }
 
-#ifndef OSG_GLES2_AVAILABLE
+#if !( defined(OSG_GLES2_AVAILABLE) || defined(OSG_GLES3_AVAILABLE) || defined(OSG_GL3_AVAILABLE) )
     if ( renderColor )
     {
         // emit a default terrain color since we're not binding a color array:
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
     }
-#endif
-
-    // activate the elevation texture if there is one. Same for all layers.
-    //if ( _elevTex.valid() )
-    //{
-    //    state.setActiveTextureUnit( 2 );
-    //    state.setTexCoordPointer( 1, _tileCoords.get() ); // necessary?? since we do it above
-    //    _elevTex->apply( state );
-    //    // todo: probably need an elev texture matrix as well. -gw
-    //}
-    
+#endif    
 
     // track the active image unit.
     int activeImageUnit = -1;
@@ -384,13 +369,13 @@ MPGeometry::renderPrimitiveSets(osg::State& state,
                         // assign the min range
                         if ( minRangeLocation >= 0 )
                         {
-                            ext->glUniform1f( minRangeLocation, layer._imageLayer->getImageLayerOptions().minVisibleRange().get() );
+                            ext->glUniform1f( minRangeLocation, layer._imageLayer->options().minVisibleRange().get() );
                         }
 
                         // assign the max range
                         if ( maxRangeLocation >= 0 )
                         {
-                            ext->glUniform1f( maxRangeLocation, layer._imageLayer->getImageLayerOptions().maxVisibleRange().get() );
+                            ext->glUniform1f( maxRangeLocation, layer._imageLayer->options().maxVisibleRange().get() );
                         }
                     }
 
@@ -503,7 +488,7 @@ MPGeometry::validate()
 
         else if ( de->getNumIndices() % 3 != 0 )
         {
-            OE_WARN << LC << "Invalid primitive set - wrong number of indicies" << std::endl;
+            OE_WARN << LC << "Invalid primitive set - wrong number of indices" << std::endl;
             //_primitives.clear();
             osg::DrawElementsUShort* deus = static_cast<osg::DrawElementsUShort*>(de);
             int extra = de->getNumIndices() % 3;
@@ -579,6 +564,25 @@ MPGeometry::compileGLObjects( osg::RenderInfo& renderInfo ) const
     osg::Geometry::compileGLObjects( renderInfo );
 }
 
+#if OSG_MIN_VERSION_REQUIRED(3,5,6)
+
+osg::VertexArrayState*
+#if OSG_MIN_VERSION_REQUIRED(3,5,9)
+MPGeometry::createVertexArrayStateImplementation(osg::RenderInfo& renderInfo) const
+{
+    osg::VertexArrayState* vas = osg::Geometry::createVertexArrayStateImplementation(renderInfo);
+#else
+MPGeometry::createVertexArrayState(osg::RenderInfo& renderInfo) const
+{
+    osg::VertexArrayState* vas = osg::Geometry::createVertexArrayState(renderInfo);
+#endif
+    // make sure we have array dispatchers for the multipass coords
+    vas->assignTexCoordArrayDispatcher(_texCoordList.size() + 2);
+
+    return vas;
+}
+#endif
+
 
 void 
 MPGeometry::drawImplementation(osg::RenderInfo& renderInfo) const
@@ -594,61 +598,44 @@ MPGeometry::drawImplementation(osg::RenderInfo& renderInfo) const
 
     bool hasVertexAttributes = !_vertexAttribList.empty();
 
-    osg::ArrayDispatchers& arrayDispatchers = state.getArrayDispatchers();
-
-    arrayDispatchers.reset();
-    arrayDispatchers.setUseVertexAttribAlias(state.getUseVertexAttributeAliasing());
-
-
-    //Remove?
-#if OSG_VERSION_LESS_THAN(3,1,8)
-    arrayDispatchers.setUseGLBeginEndAdapter(false);
-#endif
-
-#if OSG_MIN_VERSION_REQUIRED(3,1,8)
-    arrayDispatchers.activateNormalArray(_normalArray.get());
+#if OSG_VERSION_LESS_THAN(3,5,6)
+    osg::ArrayDispatchers& dispatchers = state.getArrayDispatchers();
 #else
-    arrayDispatchers.activateNormalArray(_normalData.binding, _normalData.array.get(), _normalData.indices.get());
+    osg::AttributeDispatchers& dispatchers = state.getAttributeDispatchers();
 #endif
-    
+
+    dispatchers.reset();
+    dispatchers.setUseVertexAttribAlias(state.getUseVertexAttributeAliasing());
+    dispatchers.activateNormalArray(_normalArray.get());   
 
     if (hasVertexAttributes)
     {
         for(unsigned int unit=0;unit<_vertexAttribList.size();++unit)
         {
-#if OSG_MIN_VERSION_REQUIRED(3,1,8)
-            arrayDispatchers.activateVertexAttribArray(unit, _vertexAttribList[unit].get());
-#else
-            arrayDispatchers.activateVertexAttribArray(_vertexAttribList[unit].binding, unit, _vertexAttribList[unit].array.get(), _vertexAttribList[unit].indices.get());
-#endif             
+            dispatchers.activateVertexAttribArray(unit, _vertexAttribList[unit].get());
         }
     }
 
     // dispatch any attributes that are bound overall
-    arrayDispatchers.dispatch(BIND_OVERALL,0);
+#if OSG_VERSION_LESS_THAN(3,5,6)
+    dispatchers.dispatch(BIND_OVERALL,0);
+#else
+    dispatchers.dispatch(0);
+#endif
     state.lazyDisablingOfVertexAttributes();
 
 
     // set up arrays
-#if OSG_MIN_VERSION_REQUIRED( 3, 1, 8 )
     if( _vertexArray.valid() )
         state.setVertexPointer(_vertexArray.get());
 
     if (_normalArray.valid() && _normalArray->getBinding()==osg::Array::BIND_PER_VERTEX)
         state.setNormalPointer(_normalArray.get());
-#else
-    if( _vertexData.array.valid() )
-        state.setVertexPointer(_vertexData.array.get());
-
-    if (_normalData.binding==BIND_PER_VERTEX && _normalData.array.valid())
-        state.setNormalPointer(_normalData.array.get());
-#endif
 
     if( hasVertexAttributes )
     {
         for(unsigned int index = 0; index < _vertexAttribList.size(); ++index )
         {
-#if OSG_MIN_VERSION_REQUIRED( 3, 1, 8)
             const Array* array = _vertexAttribList[index].get();
             if (array && array->getBinding()==osg::Array::BIND_PER_VERTEX)
             {
@@ -664,14 +651,6 @@ MPGeometry::drawImplementation(osg::RenderInfo& renderInfo) const
                     state.setVertexAttribPointer( index, array );
                 }
             }
-#else            
-            const osg::Array* array = _vertexAttribList[index].array.get();
-            const AttributeBinding ab = _vertexAttribList[index].binding;
-            if( ab == BIND_PER_VERTEX && array )
-            {
-                state.setVertexAttribPointer( index, array, _vertexAttribList[index].normalize );
-            }
-#endif
         }
     }
 
@@ -681,8 +660,13 @@ MPGeometry::drawImplementation(osg::RenderInfo& renderInfo) const
     renderPrimitiveSets(state, renderColor, true);
 
     // unbind the VBO's if any are used.
-    state.unbindVertexBufferObject();
-    state.unbindElementBufferObject();
+#if OSG_MIN_VERSION_REQUIRED(3,5,6)
+    if (!state.useVertexArrayObject(_useVertexArrayObject) || state.getCurrentVertexArrayState()->getRequiresSetArrays())
+#endif
+    {
+        state.unbindVertexBufferObject();
+        state.unbindElementBufferObject();
+    }
 }
 
 void

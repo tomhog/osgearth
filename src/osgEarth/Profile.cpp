@@ -23,6 +23,7 @@
 #include <osgEarth/Cube>
 #include <osgEarth/SpatialReference>
 #include <osgEarth/StringUtils>
+#include <osgEarth/Bounds>
 #include <osgDB/FileNameUtils>
 #include <algorithm>
 #include <sstream>
@@ -53,6 +54,12 @@ _numTilesWideAtLod0( 1 ),
 _numTilesHighAtLod0( 1 )
 {
     _namedProfile = namedProfile; // don't set above
+}
+
+ void
+ ProfileOptions::mergeConfig( const Config& conf ) {
+    ConfigOptions::mergeConfig( conf );
+    fromConfig( conf );
 }
 
 void
@@ -89,8 +96,8 @@ ProfileOptions::getConfig() const
     }
     else
     {
-        conf.updateIfSet( "srs", _srsInitString );
-        conf.updateIfSet( "vdatum", _vsrsInitString );
+        conf.set( "srs", _srsInitString );
+        conf.set( "vdatum", _vsrsInitString );
 
         if ( _bounds.isSet() )
         {
@@ -100,8 +107,8 @@ ProfileOptions::getConfig() const
             conf.update( "ymax", toString(_bounds->yMax()) );
         }
 
-        conf.updateIfSet( "num_tiles_wide_at_lod_0", _numTilesWideAtLod0 );
-        conf.updateIfSet( "num_tiles_high_at_lod_0", _numTilesHighAtLod0 );
+        conf.set( "num_tiles_wide_at_lod_0", _numTilesWideAtLod0 );
+        conf.set( "num_tiles_high_at_lod_0", _numTilesHighAtLod0 );
     }
     return conf;
 }
@@ -210,7 +217,30 @@ Profile::create(const std::string& srsInitString,
     }
     else if ( srs.valid() )
     {
-        OE_WARN << LC << "Failed to create profile; you must provide extents with a projected SRS." << std::endl;
+        OE_INFO << LC << "No extents given, making some up.\n";
+        Bounds bounds;
+        if (srs->guessBounds(bounds))
+        {
+            if (numTilesWideAtLod0 == 0 || numTilesHighAtLod0 == 0)
+            {
+                double ar = (bounds.width() / bounds.height());
+                if (ar >= 1.0) {
+                    int ari = (int)ar;
+                    numTilesHighAtLod0 = 1;
+                    numTilesWideAtLod0 = ari;
+                }
+                else {
+                    int ari = (int)(1.0/ar);
+                    numTilesWideAtLod0 = 1;
+                    numTilesHighAtLod0 = ari;
+                }
+            }            
+            return Profile::create(srs.get(), bounds.xMin(), bounds.yMin(), bounds.xMax(), bounds.yMax(), numTilesWideAtLod0, numTilesHighAtLod0);
+        }
+        else
+        {
+            OE_WARN << LC << "Failed to create profile; you must provide extents with a projected SRS." << std::endl;
+        }
     }
     else
     {
@@ -514,7 +544,7 @@ Profile::getNumTiles(unsigned int lod, unsigned int& out_tiles_wide, unsigned in
 unsigned int
 Profile::getLevelOfDetailForHorizResolution( double resolution, int tileSize ) const
 {
-    if ( tileSize <= 0 || resolution <= 0.0 ) return 0;
+    if ( tileSize <= 0 || resolution <= 0.0 ) return 23;
 
     double tileRes = (_extent.width() / (double)_numTilesWideAtLod0) / (double)tileSize;
     unsigned int level = 0;
@@ -560,6 +590,80 @@ Profile::createTileKey( double x, double y, unsigned int level ) const
         return TileKey::INVALID;
     }
 }
+
+#if 1
+
+GeoExtent
+Profile::clampAndTransformExtent(const GeoExtent& input, bool* out_clamped) const
+{
+    // initialize the output flag
+    if ( out_clamped )
+        *out_clamped = false;
+
+    // begin by transforming the input extent to this profile's SRS.
+    GeoExtent inputInMySRS = input.transform(getSRS());
+
+    if (inputInMySRS.isValid())
+    {
+        // Compute the intersection of the two:
+        GeoExtent intersection = inputInMySRS.intersectionSameSRS(getExtent());
+
+        // expose whether clamping took place:
+        if (out_clamped != 0L)
+        {
+            *out_clamped = intersection != getExtent();
+        }
+
+        return intersection;
+    }
+
+    else
+    {
+        // The extent transformation failed, probably due to an out-of-bounds condition.
+        // Go to Plan B: attempt the operation in lat/long
+        const SpatialReference* geo_srs = getSRS()->getGeographicSRS();
+
+        // get the input in lat/long:
+        GeoExtent gcs_input =
+            input.getSRS()->isGeographic()?
+            input :
+            input.transform( geo_srs );
+
+        // bail out on a bad transform:
+        if ( !gcs_input.isValid() )
+            return GeoExtent::INVALID;
+
+        // bail out if the extent's do not intersect at all:
+        if ( !gcs_input.intersects(_latlong_extent, false) )
+            return GeoExtent::INVALID;
+
+        // clamp it to the profile's extents:
+        GeoExtent clamped_gcs_input = GeoExtent(
+            gcs_input.getSRS(),
+            osg::clampBetween( gcs_input.xMin(), _latlong_extent.xMin(), _latlong_extent.xMax() ),
+            osg::clampBetween( gcs_input.yMin(), _latlong_extent.yMin(), _latlong_extent.yMax() ),
+            osg::clampBetween( gcs_input.xMax(), _latlong_extent.xMin(), _latlong_extent.xMax() ),
+            osg::clampBetween( gcs_input.yMax(), _latlong_extent.yMin(), _latlong_extent.yMax() ) );
+
+        if ( out_clamped )
+            *out_clamped = (clamped_gcs_input != gcs_input);
+
+        // finally, transform the clamped extent into this profile's SRS and return it.
+        GeoExtent result =
+            clamped_gcs_input.getSRS()->isEquivalentTo( this->getSRS() )?
+            clamped_gcs_input :
+            clamped_gcs_input.transform( this->getSRS() );
+
+        if (result.isValid())
+        {
+            OE_DEBUG << LC << "clamp&xform: input=" << input.toString() << ", output=" << result.toString() << std::endl;
+        }
+
+        return result;
+    }    
+}
+
+#else
 
 GeoExtent
 Profile::clampAndTransformExtent( const GeoExtent& input, bool* out_clamped ) const
@@ -608,6 +712,7 @@ Profile::clampAndTransformExtent( const GeoExtent& input, bool* out_clamped ) co
 
     return result;
 }
+#endif
 
 namespace
 {

@@ -26,6 +26,7 @@
 #include <osg/Texture>
 #include <osg/GL>
 #include <osg/NodeVisitor>
+#include <osgDB/ReaderWriter>
 #include <vector>
 
 //These formats were not added to OSG until after 2.8.3 so we need to define them to use them.
@@ -324,9 +325,39 @@ namespace osgEarth
             const Bounds&     referenceBounds);
 
         /**
+         * Bicubic upsampling in a quadrant. Target image is already allocated.
+         */
+        static bool bicubicUpsample(
+            const osg::Image* source,
+            osg::Image* target,
+            unsigned quadrant,
+            unsigned stride);
+
+        /**
          * 
          */
         static osg::Image* upSampleNN(const osg::Image* src, int quadrant);
+
+        /**
+         * Activates mipmapping for a texture image if the correct filters exist.
+         *
+         * If OSG has an ImageProcessor service installed, this method will use that
+         * to generate mipmaps. If not, the method will be a NOP and the GPU wil
+         * generate mipmaps (if necessary) upon GPU transfer.
+         */
+        static void activateMipMaps(osg::Texture* texture);
+
+        /**
+         * Gets an osgDB::ReaderWriter for the given input stream.
+         * Returns NULL if no ReaderWriter can be found.
+         */
+        static osgDB::ReaderWriter* getReaderWriterForStream(std::istream& stream);
+
+        /**
+         * Reads an osg::Image from the given input stream.         
+         * Returns NULL if the image could not be read.
+         */
+        static osg::Image* readStream(std::istream& stream, const osgDB::Options* options);
 
         /**
          * Reads color data out of an image, regardles of its internal pixel format.
@@ -339,6 +370,9 @@ namespace osgEarth
              * image have been scaled to [0..1] and should be denormalized upon reading.
              */
             PixelReader(const osg::Image* image);
+
+            /** Sets an image to read. */
+            void setImage(const osg::Image* image);
 
             /** Whether to use bilinear interpolation when reading with u,v coords (default=true) */
             void setBilinear(bool value) { _bilinear = value; }
@@ -363,6 +397,7 @@ namespace osgEarth
 
             /** Reads a color from the image by unit coords [0..1] */
             osg::Vec4 operator()(float u, float v, int r=0, int m=0) const;
+            osg::Vec4 operator()(double u, double v, int r=0, int m=0) const;
 
             // internals:
             const unsigned char* data(int s=0, int t=0, int r=0, int m=0) const {
@@ -512,8 +547,6 @@ namespace osgEarth
 
     public: // osg::NodeVisitor
         virtual void apply(osg::Node& node);
-        virtual void apply(osg::Geode& geode);
-        virtual void apply(osg::Drawable& drawable);
         virtual void apply(osg::StateSet& stateSet);
     };
 }
