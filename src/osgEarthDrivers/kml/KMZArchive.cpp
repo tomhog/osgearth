@@ -120,7 +120,7 @@ KMZArchive::~KMZArchive()
 }
 
 void 
-KMZArchive::close()
+KMZArchive::close(bool forceall)
 {
     if ( _zip.valid() )
     {

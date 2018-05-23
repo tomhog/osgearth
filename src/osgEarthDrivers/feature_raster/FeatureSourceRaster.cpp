@@ -79,7 +79,7 @@ public:
                 double pixHeight = key.getExtent().height() / (double)image.getImage()->t();
                 ImageUtils::PixelReader reader(image.getImage());
 
-                for (unsigned int r = 0; r < image.getImage()->t(); r++)
+                for (int r = 0; r < image.getImage()->t(); r++)
                 {
                     double y = key.getExtent().yMin() + (double)r * pixHeight;
 
@@ -87,7 +87,7 @@ public:
                     double maxX = 0;
                     float value = 0.0;
 
-                    for (unsigned int c = 0; c < image.getImage()->s(); c++)
+                    for (int c = 0; c < image.getImage()->s(); c++)
                     {
                         double x = key.getExtent().xMin() + (double)c * pixWidth;
 

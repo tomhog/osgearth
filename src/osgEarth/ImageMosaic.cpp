@@ -109,8 +109,10 @@ ImageMosaic::createImage()
     unsigned int pixelsWide = tilesWide * tileWidth;
     unsigned int pixelsHigh = tilesHigh * tileHeight;
 
+// Add Materials processing support or lightmap ...
+	int rcount = tile->_image->r();
     osg::ref_ptr<osg::Image> image = new osg::Image;
-    image->allocateImage(pixelsWide, pixelsHigh, 1, tile->_image->getPixelFormat(), tile->_image->getDataType());
+    image->allocateImage(pixelsWide, pixelsHigh, rcount, tile->_image->getPixelFormat(), tile->_image->getDataType());
     image->setInternalTextureFormat(tile->_image->getInternalTextureFormat());
     ImageUtils::markAsNormalized(image.get(), ImageUtils::isNormalized(tile->getImage()));
 
@@ -118,9 +120,10 @@ ImageMosaic::createImage()
     //memset(image->data(), 0xFF, image->getImageSizeInBytes());
 
     ImageUtils::PixelWriter write(image.get());
-    for (unsigned t = 0; t < pixelsHigh; ++t)
-        for (unsigned s = 0; s < pixelsWide; ++s)
-            write(osg::Vec4(1,1,1,0), s, t);
+	for (unsigned r = 0; r < (unsigned)rcount; ++r)
+		for (unsigned t = 0; t < pixelsHigh; ++t)
+			for (unsigned s = 0; s < pixelsWide; ++s)
+				write(osg::Vec4(1,1,1,0), s, t, r);
 
     //Composite the incoming images into the master image
     for (TileImageList::iterator i = _images.begin(); i != _images.end(); ++i)

@@ -186,7 +186,7 @@ namespace
                         duk_put_prop_string(ctx, props_i, a->first.c_str());
                     }
                 }
-                duk_put_prop_string(ctx, feature_i, "properties");
+                duk_put_prop_string(ctx, feature_i, "attributes");
             }
             duk_put_prop_string(ctx, -2, "feature");
         }

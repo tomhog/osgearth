@@ -85,24 +85,6 @@ TransientUserDataStore::exists(osg::Referenced* owner, const std::string& key) c
     return ( j != i->second._data.end() );
 }
 
-void
-TransientUserDataStore::remove(osg::Referenced* owner, const std::string& key)
-{
-    if (!owner)
-        return;
-    
-    Threading::ScopedMutexLock lock(_mutex);
-    Table::iterator i = _table.find(owner);
-    if ( i != _table.end() )
-    {
-        i->second._data.erase(key);
-        if (i->second._data.empty())
-        {
-            _table.erase(i);
-        }
-    }
-}
-
 bool
 TransientUserDataStore::unitTest()
 {
@@ -146,12 +128,6 @@ osg::Referenced*
 VisitorData::_fetch(osg::NodeVisitor& nv, const std::string& key)
 {
     return Registry::instance()->dataStore().fetch( &nv, key );
-}
-
-void
-VisitorData::remove(osg::NodeVisitor& nv, const std::string& key)
-{
-    Registry::instance()->dataStore().remove( &nv, key );
 }
 
 bool

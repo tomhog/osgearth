@@ -32,7 +32,7 @@ struct KMZArchive : public osgDB::Archive
     virtual ~KMZArchive();
 
     /** closes the archive */
-    void close();
+    void close(bool forceall = false);
 
     /** Get the file name which represents the archived file.*/
     std::string getArchiveFileName() const;

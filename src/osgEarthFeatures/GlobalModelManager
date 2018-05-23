@@ -1,0 +1,90 @@
+#pragma once
+#include <osg/AutoTransform>
+#include <osg/Drawable>
+#include <osg/Geode>
+#include <osg/MatrixTransform>
+#include <osg/NodeVisitor>
+#include <osg/ShapeDrawable>
+#include <osg/AlphaFunc>
+#include <osg/Billboard>
+
+#include <osgSim/LightPointNode>
+
+#include <osgDB/FileNameUtils>
+#include <osgDB/Registry>
+#include <osgDB/WriteFile>
+#include <osgDB/Archive>
+
+#include <osgUtil/Optimizer>
+#include <osgUtil/MeshOptimizers>
+#include <osgEarthFeatures/Common>
+#include <osgEarthFeatures/Feature>
+#include <osgEarthFeatures/Filter>
+#include <osgEarthSymbology/Style>
+#include <osgEarthSymbology/MarkerResource>
+#include <osgEarth/Containers>
+#include <osgEarth/ThreadingUtils>
+#include <vector>
+#include <stack>
+#include <map>
+
+struct ModelReplacementData
+{
+	std::string ReplaceNodeName;
+	std::string NewNodeName;
+	std::string ModelXformName;
+	osg::ref_ptr<osg::Node> modelNode;
+	ModelReplacementData() : ReplaceNodeName(""), NewNodeName(""), modelNode(NULL)
+	{
+	};
+	ModelReplacementData(std::string newNodeName, std::string oldNodeName, std::string xformname, osg::ref_ptr<osg::Node> ModelNode) : ReplaceNodeName(oldNodeName), NewNodeName(newNodeName), 
+						 modelNode(ModelNode), ModelXformName(xformname)
+	{
+	};
+};
+typedef ModelReplacementData * ModelReplacementdataP;
+typedef std::vector<ModelReplacementdataP> ModelReplacmentdataPV;
+
+
+struct RetiredModelData
+{
+	std::string XformNodeName;
+	osg::ref_ptr<osg::Node> modelNode;
+	RetiredModelData() : XformNodeName(""), modelNode(NULL)
+	{
+	};
+	RetiredModelData(std::string xformname, osg::ref_ptr<osg::Node> node) : XformNodeName(xformname), modelNode(node)
+	{
+	};
+};
+
+typedef std::map<std::string, RetiredModelData> RetiredModelMap;
+
+class OSGEARTHFEATURES_EXPORT GlobalModelManager
+{
+public:
+	GlobalModelManager();
+	virtual ~GlobalModelManager();
+
+	void Add_To_Replacment_Stack(ModelReplacmentdataPV Replacements);
+
+	bool Have_Replacement_Data(void);
+	ModelReplacmentdataPV Get_Next_Replacement_From_Stack(void);
+
+	void Add_To_Retired_Map(std::string NodeName, std::string XformName, osg::ref_ptr<osg::Node> oldNode);
+
+	bool Have_RetiredModel(std::string ModelName);
+
+	ModelReplacmentdataPV Test_Next_Replacement(void);
+
+	static GlobalModelManager * getInstance(void);
+
+private:
+	std::stack<ModelReplacmentdataPV>				m_ReplaceNodes;
+	std::map<std::string, osg::ref_ptr<osg::Node>>  m_GlobalGTModels;
+	RetiredModelMap									m_RetiredGSModels;
+
+	osgEarth::Threading::Mutex						m_StackMutex;
+	osgEarth::Threading::Mutex						m_RetiredMutex;
+};
+

@@ -26,6 +26,7 @@
 #include <osgEarthSymbology/Style>
 #include <osgEarthSymbology/MarkerResource>
 #include <osgEarth/Containers>
+#include <osgEarthFeatures\GlobalModelManager>
 
 namespace osgEarth { namespace Features
 {
@@ -89,7 +90,7 @@ namespace osgEarth { namespace Features
 
         typedef LRUCache<URI, osg::ref_ptr<InstanceResource> > InstanceCache;
         InstanceCache _instanceCache;
-        
+		GlobalModelManager *		   _GlobalModelMgr;
         bool process(const FeatureList& features, const InstanceSymbol* symbol, Session* session, osg::Group* ap, FilterContext& context );
         
         bool findResource( const URI& instanceURI, const InstanceSymbol* symbol, FilterContext& context, std::set<URI>& missing, osg::ref_ptr<InstanceResource>& output );

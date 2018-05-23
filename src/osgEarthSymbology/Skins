@@ -49,11 +49,17 @@ namespace osgEarth { namespace Symbology
          */
         osg::StateSet* createStateSet( const osgDB::Options* dbOptions ) const;
 
-        /**
+		bool add2StateSet(osg::ref_ptr<osg::StateSet>& output, osg::Image* image);
+
+		bool createMatStateSet(osg::ref_ptr<osg::StateSet>& output, const osgDB::Options* dbOptions);
+
+		/**
          * Creates an image for this SkinResource.
          */
-        osg::ref_ptr<osg::Image> createImage( const osgDB::Options* options ) const;
-        
+		osg::ref_ptr<osg::Image> createImage(const osgDB::Options* options) const;
+
+		osg::ref_ptr<osg::Image> createMatImage(const osgDB::Options* options) const;
+
         osg::Texture* createTexture(const osgDB::Options* readOptions) const;
 
         osg::Texture* createTexture(osg::Image* image) const;
@@ -64,6 +70,8 @@ namespace osgEarth { namespace Symbology
          */
         std::string getUniqueID() const;
 
+		std::string getUniqueMatID() const;
+
     public:
         /** inline image (not serializable) */
         osg::ref_ptr<osg::Image>& image() { return _image; }
@@ -73,7 +81,11 @@ namespace osgEarth { namespace Symbology
         optional<URI>& imageURI() { return _imageURI; }
         const optional<URI>& imageURI() const { return _imageURI; }
 
-        /** Real-world width of the image, in meters */
+		/** Source location of the actual material texture image.  */
+		optional<URI>& materialURI() { return _materialURI; }
+		const optional<URI>& materialURI() const { return _materialURI; }
+
+		/** Real-world width of the image, in meters */
         optional<float>& imageWidth() { return _imageWidth; }
         const optional<float>& imageWidth() const { return _imageWidth; }
 
@@ -142,6 +154,7 @@ namespace osgEarth { namespace Symbology
 
         optional<std::string>       _name;
         optional<URI>               _imageURI;
+		optional<URI>				_materialURI;
         optional<float>             _imageWidth;
         optional<float>             _imageHeight;
         optional<float>             _minObjHeight;

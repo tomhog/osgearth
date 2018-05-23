@@ -245,13 +245,20 @@ SpatialReference::create( const Key& key, bool useCache )
     if (key.horizLower == "spherical-mercator" || 
         key.horizLower == "epsg:900913"        || 
         key.horizLower == "epsg:3785"          || 
-        key.horizLower == "epsg:102113")
+        key.horizLower == "epsg:102113"		   ||
+		key.horizLower == "epsg:3857")
     {
         // note the use of nadgrids=@null (see http://proj.maptools.org/faq.html)
         srs = createFromPROJ4(
             "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +towgs84=0,0,0,0,0,0,0 +wktext +no_defs",
             "Spherical Mercator" );
     }
+	//Google Web Mercator
+//	else if (key.horizLower == "epsg:3857")
+//	{
+//		srs = createFromPROJ4("+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext  +no_defs",
+//			"Web Mercator");
+//	}
 
     // ellipsoidal ("world") mercator:
     else 

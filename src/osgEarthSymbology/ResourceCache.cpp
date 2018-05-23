@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include <osgEarthSymbology/ResourceCache>
+#include <osgDB/Archive>
 
 using namespace osgEarth;
 using namespace osgEarth::Symbology;
@@ -60,7 +61,7 @@ ResourceCache::getOrCreateStateSet(SkinResource*                skin,
         {
             // still not there, make it.
             output = skin->createStateSet(readOptions);
-            if ( output.valid() )
+            if ( output.valid() && !skin->materialURI().isSet())
             {
                 _skinCache.insert( key, output.get() );
             }
@@ -70,6 +71,45 @@ ResourceCache::getOrCreateStateSet(SkinResource*                skin,
     return output.valid();
 }
 
+bool
+ResourceCache::getOrCreateMatStateSet(SkinResource*                skin,
+									 osg::ref_ptr<osg::StateSet>& output,
+	                                 const osgDB::Options*        readOptions)
+{
+	//std::string key = skin->getConfig().toJSON(false);
+
+	// Note: we use the imageURI as the basis for the caching key since 
+	// it's the only property used by Skin->createStateSet(). If that
+	// changes, we need to address it here. It might be better it SkinResource
+	// were to provide a unique key.
+	std::string key = skin->getUniqueID();
+
+	// exclusive lock (since it's an LRU)
+	{
+		Threading::ScopedMutexLock exclusive(_skinMutex);
+
+		// double check to avoid race condition
+		SkinCache::Record rec;
+		if (_skinCache.get(key, rec) && rec.value().valid())
+		{
+			output = rec.value().get();
+			int numTexModes = output->getNumTextureModeLists();
+			if(numTexModes < 2)
+				skin->createMatStateSet( output, readOptions);
+		}
+		else
+		{
+			// still not there, make it.
+			skin->createMatStateSet(output, readOptions);
+			if (output.valid())
+			{
+				_skinCache.insert(key, output.get());
+			}
+		}
+	}
+
+	return output.valid();
+}
 
 bool
 ResourceCache::getOrCreateInstanceNode(InstanceResource*        res,
@@ -106,7 +146,7 @@ ResourceCache::getOrCreateInstanceNode(InstanceResource*        res,
 bool
 ResourceCache::cloneOrCreateInstanceNode(InstanceResource*        res,
                                          osg::ref_ptr<osg::Node>& output,
-                                         const osgDB::Options*    readOptions)
+                                         const osgDB::Options*    readOptions, osgDB::Archive *ar)
 {
     output = 0L;
     std::string key = res->getConfig().toJSON(false);
@@ -127,7 +167,17 @@ ResourceCache::cloneOrCreateInstanceNode(InstanceResource*        res,
         else
         {
             // still not there, make it.
-            output = res->createNode(readOptions);
+			if (ar)
+			{
+				std::string modelname = res->uri().get().base();
+				osgDB::ReaderWriter::ReadResult r = ar->readNode(modelname, readOptions);
+				if (r.validNode())
+					output = r.getNode();
+			}
+			else
+			{
+           		output = res->createNode(readOptions);
+			}
             if ( output.valid() )
             {
                 _instanceCache.insert( key, output.get() );

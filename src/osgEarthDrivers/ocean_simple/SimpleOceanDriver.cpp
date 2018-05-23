@@ -56,6 +56,7 @@ namespace osgEarth { namespace SimpleOcean
         bool connect(MapNode* mapNode)
         {
             _oceanNode = createOceanNode(mapNode);
+			_oceanNode->setName("SimpleOceanNode");
             mapNode->addChild(_oceanNode.get());
             return true;
         }

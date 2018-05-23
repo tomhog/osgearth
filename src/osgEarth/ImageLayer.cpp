@@ -492,21 +492,24 @@ ImageLayer::createImageInNativeProfile(const TileKey&    key,
         ImageMosaic mosaic;
         for( std::vector<TileKey>::iterator k = nativeKeys.begin(); k != nativeKeys.end(); ++k )
         {
+            bool isFallback = false;
             GeoImage image = createImageInKeyProfile( *k, progress );
             if ( image.valid() )
             {
-                foundAtLeastOneRealTile = true;
                 mosaic.getImages().push_back( TileImage(image.getImage(), *k) );
             }
             else
             {
-                // We didn't get an image so pad the mosaic with a transparent image.
-                mosaic.getImages().push_back( TileImage(ImageUtils::createEmptyImage(getTileSize(), getTileSize()), *k));
+                // if we get EVEN ONE invalid tile, we have to abort because there will be
+                // empty spots in the mosaic. (By "invalid" we mean a tile that could not
+                // even be resolved through the fallback procedure.)
+                return GeoImage::INVALID;
+                //TODO: probably need to change this so the mosaic uses alpha.
             }
         }
 
         // bail out if we got nothing.
-        if ( foundAtLeastOneRealTile )
+        if ( mosaic.getImages().size() > 0 )
         {
             // assemble new GeoImage from the mosaic.
             double rxmin, rymin, rxmax, rymax;

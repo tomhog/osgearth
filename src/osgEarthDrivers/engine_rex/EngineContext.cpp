@@ -42,7 +42,7 @@ EngineContext::EngineContext(const Map*                     map,
                              const RexTerrainEngineOptions& options,
                              const SelectionInfo&           selectionInfo,
                              TilePatchCallbacks&            tilePatchCallbacks) :
-_map           ( map ),
+_frame         ( map ),
 _terrainEngine ( terrainEngine ),
 _geometryPool  ( geometryPool ),
 _loader        ( loader ),
@@ -58,16 +58,12 @@ _tilesLastCull(0)
     _expirationRange2 = _options.expirationRange().get() * _options.expirationRange().get();
 }
 
-void
-EngineContext::createMapFrame(MapFrame& frame) const
+const MapFrame& EngineContext::getMapFrame()
 {
-    frame.setMap(_map.get());
-}
+    if (_frame.needsSync())
+        _frame.sync();
 
-MapInfo
-EngineContext::getMapInfo() const
-{
-    return MapInfo(_map.get());
+    return _frame;
 }
 
 void

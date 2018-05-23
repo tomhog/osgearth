@@ -49,7 +49,5 @@ GeoPositionNodeAutoScaler::operator()(osg::Node* node, osg::NodeVisitor* nv)
 	else if (size>_maxScale)
 		size = _maxScale;
     geo->getPositionAttitudeTransform()->setScale( osg::componentMultiply(_baseScale, osg::Vec3d(size,size,size)) );
-    if (node->getCullingActive() == false)
-        node->setCullingActive(true);
     traverse(node, nv);
 }

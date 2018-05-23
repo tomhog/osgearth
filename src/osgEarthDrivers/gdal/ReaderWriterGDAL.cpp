@@ -43,6 +43,7 @@
 #include <ogr_spatialref.h>
 
 #include "GDALOptions"
+#include <CDB_TileLib/CDB_Tile>
 
 #define LC "[GDAL driver] "
 
@@ -196,7 +197,7 @@ getFiles(const std::string &file, const std::vector<std::string> &exts, const st
  * DEALINGS IN THE SOFTWARE.
  ****************************************************************************/
 static GDALDatasetH
-build_vrt(std::vector<std::string> &files, ResolutionStrategy resolutionStrategy)
+build_vrt(std::vector<std::string> &files, ResolutionStrategy resolutionStrategy, std::string table)
 {
     GDAL_SCOPED_LOCK;
 
@@ -218,17 +219,44 @@ build_vrt(std::vector<std::string> &files, ResolutionStrategy resolutionStrategy
     DatasetProperty* psDatasetProperties =
             (DatasetProperty*) CPLMalloc(nInputFiles*sizeof(DatasetProperty));
 
+	char * ilayer = NULL;
+	char *papszOptions[3];
+	bool openwithoptions = false;
+	if (!table.empty())
+	{
+		std::string OpTablestr = "TABLE=" + table;
+		ilayer = new char[OpTablestr.length() + 1];
+		strncpy_s(ilayer, OpTablestr.length() + 1, OpTablestr.c_str(), OpTablestr.length());
+		ilayer[OpTablestr.length()] = 0;
+		papszOptions[0] = ilayer;
+		papszOptions[1] = NULL;
+		papszOptions[2] = NULL;
+		openwithoptions = true;
+	}
+#ifdef _DEBUG
+	int fopenCount = 0;
+#endif
     for(i=0;i<nInputFiles;i++)
     {
         const char* dsFileName = files[i].c_str();
 
         GDALTermProgress( 1.0 * (i+1) / nInputFiles, NULL, NULL);
-
-        GDALDatasetH hDS = GDALOpen(dsFileName, GA_ReadOnly );
+		GDALDatasetH hDS;
+		if (!openwithoptions)
+		{
+			hDS = GDALOpen(dsFileName, GA_ReadOnly);
+		}
+		else
+		{
+			hDS = GDALOpenEx(dsFileName, GA_ReadOnly, NULL, papszOptions, NULL);
+		}
         psDatasetProperties[i].isFileOK = FALSE;
 
         if (hDS)
         {
+#ifdef _DEBUG
+			++fopenCount;
+#endif
             const char* proj = GDALGetProjectionRef(hDS);
             if (!proj || strlen(proj) == 0)
             {
@@ -437,19 +465,19 @@ build_vrt(std::vector<std::string> &files, ResolutionStrategy resolutionStrategy
 #if GDAL_VERSION_1_6_OR_NEWER
 
         //Use a proxy dataset if possible.  This helps with huge amount of files to keep the # of handles down
-        GDALProxyPoolDatasetH hDS =
-               GDALProxyPoolDatasetCreate(dsFileName,
+        GDALProxyPoolDataset * hDS = new GDALProxyPoolDataset(dsFileName,
                                          psDatasetProperties[i].nRasterXSize,
                                          psDatasetProperties[i].nRasterYSize,
                                          GA_ReadOnly, TRUE, projectionRef,
                                          psDatasetProperties[i].adfGeoTransform);
+		if (openwithoptions)
+			hDS->SetOpenOptions(papszOptions);
 
         for(j=0;j<nBands;j++)
         {
-            GDALProxyPoolDatasetAddSrcBandDescription(hDS,
-                                            bandProperties[j].dataType,
-                                            psDatasetProperties[i].nBlockXSize,
-                                            psDatasetProperties[i].nBlockYSize);
+            hDS->AddSrcBandDescription( bandProperties[j].dataType,
+                                        psDatasetProperties[i].nBlockXSize,
+                                        psDatasetProperties[i].nBlockYSize);
         }
         isProxy = true;
         OE_DEBUG << LC << "Using GDALProxyPoolDatasetH" << std::endl;
@@ -492,7 +520,9 @@ build_vrt(std::vector<std::string> &files, ResolutionStrategy resolutionStrategy
         }
     }
 end:
-    CPLFree(psDatasetProperties);
+	if (ilayer)
+		delete ilayer;
+	CPLFree(psDatasetProperties);
     for(j=0;j<nBands;j++)
     {
         GDALDestroyColorTable(bandProperties[j].colorTable);
@@ -623,37 +653,6 @@ GDALDatasetH GDALAutoCreateWarpedVRTforPolarStereographic(
 }
 
 
-/**
- * Gets the GeoExtent of the given filename.
- */
-GeoExtent getGeoExtent(std::string& filename)
-{
-    GDALDataset* ds = (GDALDataset*)GDALOpen(filename.c_str(), GA_ReadOnly );
-    if (!ds)
-    {
-        return GeoExtent::INVALID;
-    }
-
-    // Get the geotransforms
-    double geotransform[6];
-    ds->GetGeoTransform(geotransform);
-
-    double minX, minY, maxX, maxY;
-
-    GDALApplyGeoTransform(geotransform, 0.0, ds->GetRasterYSize(), &minX, &minY);
-    GDALApplyGeoTransform(geotransform, ds->GetRasterXSize(), 0.0, &maxX, &maxY);
-
-    std::string srsString = ds->GetProjectionRef();
-    const SpatialReference* srs = SpatialReference::create(srsString);
-
-    GDALClose(ds);
-
-    GeoExtent ext(srs, minX, minY, maxX, maxY);
-    return ext;
-}
-
-
-
 class GDALTileSource : public TileSource
 {
 public:
@@ -732,18 +731,43 @@ public:
 
         if (useExternalDataset == false &&
             (!_options.url().isSet() || _options.url()->empty()) &&
-            (!_options.connection().isSet() || _options.connection()->empty()) )
+            (!_options.connection().isSet() || _options.connection()->empty()) && 
+			(!_options.rootDir().isSet() || !_options.Limits().isSet()))
         {
             return Status::Error(Status::ConfigurationError, "No URL, directory, or connection string specified" );
         }
 
         // source connection:
         std::string source;
+		std::string source_table = "";
+		double	min_lon,
+				max_lon,
+				min_lat,
+				max_lat;
+		bool	limits_valid = false;
 
-        if ( _options.url().isSet() )
-            source = _options.url()->full();
-        else if ( _options.connection().isSet() )
-            source = _options.connection().value();
+		if (_options.url().isSet())
+		{
+			source = _options.url()->full();
+			if (_options.table().isSet())
+				source_table = _options.table().value();
+		}
+		else if (_options.connection().isSet())
+		{
+			source = _options.connection().value();
+		}
+		else if (_options.rootDir().isSet() && _options.Limits().isSet())
+		{
+			source = _options.rootDir().value();
+			if (_options.table().isSet())
+				source_table = _options.table().value();
+			std::string cdbLimits = _options.Limits().value();
+			int count = sscanf(cdbLimits.c_str(), "%lf,%lf,%lf,%lf", &min_lon, &min_lat, &max_lon, &max_lat);
+			if (count == 4)
+				limits_valid = true;
+			else
+				return Status::Error(Status::ConfigurationError, "Limits for CDB BaseMap tiles are invalid");
+		}
 
         //URI uri = _options.url().value();
 
@@ -779,6 +803,15 @@ public:
                     OE_INFO << LC << INDENT << files[i] << std::endl;
                 }
             }
+			else if (_options.rootDir().isSet() && limits_valid)
+			{
+				CDB_Tile_Extent extent_to_load;
+				extent_to_load.West = min_lon;
+				extent_to_load.East = max_lon;
+				extent_to_load.North = max_lat;
+				extent_to_load.South = min_lat;
+				CDB_Tile::Get_BaseMap_Files(source, extent_to_load, files);
+			}
             else
             {
                 // just add the connection string as the single source.
@@ -800,7 +833,7 @@ public:
 
                 //Try to load the VRT file from the cache so we don't have to build it each time.
                 if (_cacheBin.valid())
-                {
+                {                
                     ReadResult result = _cacheBin->readString( vrtKey, 0L);
                     if (result.succeeded())
                     {
@@ -817,7 +850,7 @@ public:
                 {
                     //We couldn't get the VRT from the cache, so build it
                     osg::Timer_t startTime = osg::Timer::instance()->tick();
-                    _srcDS = (GDALDataset*)build_vrt(files, HIGHEST_RESOLUTION);
+                    _srcDS = (GDALDataset*)build_vrt(files, HIGHEST_RESOLUTION, source_table);
                     osg::Timer_t endTime = osg::Timer::instance()->tick();
                     OE_INFO << LC << INDENT << "Built VRT in " << osg::Timer::instance()->delta_s(startTime, endTime) << " s" << std::endl;
 
@@ -864,7 +897,20 @@ public:
             {
                 //If we couldn't build a VRT, just try opening the file directly
                 //Open the dataset
-                _srcDS = (GDALDataset*)GDALOpen( files[0].c_str(), GA_ReadOnly );
+				if(source_table.empty())
+					_srcDS = (GDALDataset*)GDALOpen( files[0].c_str(), GA_ReadOnly );
+				else
+				{
+					std::string OpTablestr = "TABLE=" + source_table;
+					char * ilayer = new char[OpTablestr.length() + 1];
+					strncpy_s(ilayer, OpTablestr.length() + 1, OpTablestr.c_str(), OpTablestr.length());
+					ilayer[OpTablestr.length()] = 0;
+					char *papszOptions[2];
+					papszOptions[0] = ilayer;
+					papszOptions[1] = NULL;
+					_srcDS = (GDALDataset *)GDALOpenEx(files[0].c_str(), GA_ReadOnly, NULL, papszOptions, NULL);
+					delete ilayer;
+				}
 
                 if (_srcDS)
                 {
@@ -963,7 +1009,7 @@ public:
             }
         }
 
-
+     
         //Get the initial geotransform
         _srcDS->GetGeoTransform(_geotransform);
 
@@ -1107,9 +1153,6 @@ public:
             pixelToGeo(_warpedDS->GetRasterXSize(), 0.0, maxX, maxY);
         }
 
-
-
-
         OE_DEBUG << LC << INDENT << "Geo extents: " << minX << ", " << minY << " -> " << maxX << ", " << maxY << std::endl;
 
         if ( !profile )
@@ -1162,43 +1205,12 @@ public:
             OE_INFO << LC << INDENT << _options.url().value().full() << " max Data Level: " << _maxDataLevel << std::endl;
         }
 
-        // If the input dataset is a VRT, then get the individual files in the dataset and use THEM for the DataExtents.
-        // A VRT will create a potentially very large virtual dataset from sparse datasets, so using the extents from the underlying files
-        // will allow osgEarth to only create tiles where there is actually data.
-        DataExtentList dataExtents;
-        if (strcmp(_warpedDS->GetDriver()->GetDescription(), "VRT") == 0)
-        {
-            char **papszFileList = _warpedDS->GetFileList();
-            if (papszFileList != NULL)
-            {
-                for( int i = 0; papszFileList[i] != NULL; i++ )
-                {
-                    std::string file = papszFileList[i];
-                    GeoExtent ext = getGeoExtent(file);
-                    if (ext.isValid())
-                    {
-                        dataExtents.push_back(DataExtent(ext, 0, _maxDataLevel));
-                    }
-                }
-            }
-        }
-
-
         osg::ref_ptr< SpatialReference > srs = SpatialReference::create( warpedSRSWKT );
         // record the data extent in profile space:
         _extents = GeoExtent( srs, minX, minY, maxX, maxY);
         GeoExtent profile_extent = _extents.transform( profile->getSRS() );
 
-        if (dataExtents.empty())
-        {
-            // Use the extents of the whole file.
-            getDataExtents().push_back( DataExtent(profile_extent, 0, _maxDataLevel) );
-        }
-        else
-        {
-            // Use the DataExtents from the subfiles of the VRT.
-            getDataExtents().insert(getDataExtents().end(), dataExtents.begin(), dataExtents.end());
-        }
+        getDataExtents().push_back( DataExtent(profile_extent, 0, _maxDataLevel) );
 
         //Set the profile
         setProfile( profile );
@@ -1434,7 +1446,10 @@ public:
                     bandRed   = _warpedDS->GetRasterBand( 1 );
                     bandGreen = _warpedDS->GetRasterBand( 2 );
                     bandBlue  = _warpedDS->GetRasterBand( 3 );
-                    bandAlpha = _warpedDS->GetRasterBand( 4 );
+					if (_options.nearIR().isSet() && _options.nearIR().value())
+						bandAlpha = NULL;
+					else
+						bandAlpha = _warpedDS->GetRasterBand( 4 );
                 }
                 //Gray = 1 band
                 else if (_warpedDS->GetRasterCount() == 1)
@@ -1533,11 +1548,11 @@ public:
                 delete []green;
                 delete []blue;
                 delete []alpha;
-            }
+            }            
             else if (bandGray)
             {
                 if ( getOptions().coverage() == true )
-                {
+                {                    
                     GDALDataType gdalDataType = bandGray->GetRasterDataType();
                     int          gdalSampleSize;
                     GLenum       glDataType;
@@ -1565,14 +1580,14 @@ public:
                     }
 
                     // Create an un-normalized luminance image to hold coverage values.
-                    image = new osg::Image();
+                    image = new osg::Image();                    
                     image->allocateImage( tileSize, tileSize, 1, GL_LUMINANCE, glDataType );
                     image->setInternalTextureFormat( internalFormat );
                     ImageUtils::markAsUnNormalized( image, true );
                     memset(image->data(), 0, image->getImageSizeInBytes());
-
-                    ImageUtils::PixelWriter write(image);
-
+                
+                    ImageUtils::PixelWriter write(image); 
+                    
                     // initialize all coverage texels to NODATA. -gw
                     osg::Vec4 temp;
                     temp.r() = NO_DATA_VALUE;
@@ -1582,7 +1597,7 @@ public:
                             write(temp, s, t);
                         }
                     }
-
+                    
                     // coverage data; one channel data that is not subject to interpolated values
                     unsigned char* data = new unsigned char[target_width * target_height * gdalSampleSize];
                     memset(data, 0, target_width * target_height * gdalSampleSize);
@@ -1603,7 +1618,7 @@ public:
                             {
                                 unsigned char* ptr = &data[(src_col + src_row*target_width)*gdalSampleSize];
 
-                                float value =
+                                float value = 
                                     gdalSampleSize == 1 ? (float)(*ptr) :
                                     gdalSampleSize == 2 ? (float)*(unsigned short*)ptr :
                                     gdalSampleSize == 4 ? *(float*)ptr :
@@ -1628,7 +1643,7 @@ public:
 
                     delete [] data;
                 }
-
+                
                 else // greyscale image (not a coverage)
                 {
                     unsigned char *gray = new unsigned char[target_width * target_height];
@@ -1706,7 +1721,7 @@ public:
                 //Pallete indexed imagery doesn't support interpolation currently and only uses nearest
                 //b/c interpolating pallete indexes doesn't make sense.
                 unsigned char *palette = new unsigned char[target_width * target_height];
-
+                
                 image = new osg::Image;
 
                 if ( _options.coverage() == true )
@@ -1746,7 +1761,7 @@ public:
                         unsigned char p = palette[src_col + src_row * target_width];
 
                         if ( _options.coverage() == true )
-                        {
+                        {    
                             osg::Vec4 pixel;
                             if ( isValidValue(p, bandPalette) )
                                 pixel.r() = (float)p;
@@ -1756,7 +1771,7 @@ public:
                             write(pixel, dst_col, dst_row);
                         }
                         else
-                        {
+                        {                            
                             osg::Vec4ub color;
                             getPalleteIndexColor( bandPalette, p, color );
                             if (!isValidValue( p, bandPalette))

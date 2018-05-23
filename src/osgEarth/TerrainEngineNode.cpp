@@ -129,8 +129,6 @@ _redrawRequired          ( true )
 
 TerrainEngineNode::~TerrainEngineNode()
 {
-    OE_DEBUG << LC << "~TerrainEngineNode\n";
-
     //Remove any callbacks added to the image layers
     if (_map.valid())
     {

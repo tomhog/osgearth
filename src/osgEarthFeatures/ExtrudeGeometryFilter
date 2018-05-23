@@ -36,6 +36,34 @@ namespace osgEarth { namespace Features
     
     class FeatureSourceIndex;
 
+	class ExtrudeGeomGDALHelper
+	{
+	public:
+		ExtrudeGeomGDALHelper(std::string gdalimagename);
+		~ExtrudeGeomGDALHelper();
+		bool ImageOK(void);
+		bool LL2UV(osg::Vec3d Point, float &u, float &v);
+		void Add_Mat_Index(bool have_mat_index, std::string mat_index_name);
+		osg::StateSet * CreateSetState(const osgDB::Options* readOptions);
+		bool AddMat2SetState(osg::ref_ptr<osg::StateSet> &roofSetState, const osgDB::Options* readOptions);
+	private:
+		std::string _gdalimagename;
+		std::string _imagenamefortexture;
+		bool		_have_mat_index_data;
+		std::string _mat_index_name;
+		bool		_have_image_data;
+		int			_num_bands;
+		int			_RsizeX;
+		int			_RsizeY;
+		double		_adfGeoTransform[6];
+		double		_minX;
+		double		_maxY;
+		double		_maxX;
+		double		_minY;
+
+		void		Open_Image();
+		osg::Texture * CreateTexture(osg::Image *image);
+	};
 
     /**
      * Extrudes footprint geometry into 3D geometry
@@ -192,7 +220,12 @@ namespace osgEarth { namespace Features
                             const SkinResource*     wallSkin,
                             const SkinResource*     roofSkin,
                             Structure&              out_structure,
-                            FilterContext&          cx );
+                            FilterContext&          cx,
+							bool					have_roof_image,
+							std::string				roof_image_name,
+							bool					roof_image_has_mat_index,
+							std::string				roof_mat_index_name,
+							ExtrudeGeomGDALHelper * RoofHelper);
 
         bool buildWallGeometry(const Structure&     structure,
                                osg::Geometry*       walls,
@@ -203,7 +236,9 @@ namespace osgEarth { namespace Features
         bool buildRoofGeometry(const Structure&     structure,
                                osg::Geometry*       roof,
                                const osg::Vec4&     roofColor,
-                               const SkinResource*  roofSkin);
+                               const SkinResource*  roofSkin,
+							   const bool			have_roof_image,
+							   const bool			have_roof_mat_index);
 
         bool buildOutlineGeometry(const Structure&  structure,
                                   osg::Geometry*    outline,

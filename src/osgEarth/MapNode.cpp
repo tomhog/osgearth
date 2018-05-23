@@ -421,8 +421,6 @@ MapNode::init()
 
 MapNode::~MapNode()
 {
-    OE_DEBUG << LC << "~MapNode\n";
-
     _map->removeMapCallback( _mapCallback.get() );
 
     ModelLayerVector modelLayers;
@@ -820,6 +818,8 @@ MapNode::traverse( osg::NodeVisitor& nv )
 
     else if (nv.getVisitorType() == nv.UPDATE_VISITOR || nv.getVisitorType() == nv.CULL_VISITOR)
     {
+        // put the MapNode in the visitor data and traverse.
+        VisitorData::store(nv, "osgEarth::MapNode", this);
         std::for_each( _children.begin(), _children.end(), osg::NodeAcceptOp(nv) );
     }
 

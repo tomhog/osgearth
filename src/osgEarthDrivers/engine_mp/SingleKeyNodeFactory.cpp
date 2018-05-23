@@ -100,7 +100,7 @@ SingleKeyNodeFactory::createTile(TileModel*        model,
     }
 #else
     // compile the model into a node:
-    osg::ref_ptr<TileNode> tileNode = _modelCompiler->compile(model, _frame, progress);
+    TileNode* tileNode = _modelCompiler->compile(model, _frame, progress);
 #endif
 
     // see if this tile might have children.
@@ -217,7 +217,7 @@ SingleKeyNodeFactory::createTile(TileModel*        model,
     }
     else
     {
-        result = tileNode.release();
+        result = tileNode;
     }
 
     return result;

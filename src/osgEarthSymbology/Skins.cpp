@@ -62,7 +62,7 @@ SkinResource::mergeConfig( const Config& conf )
     conf.getIfSet( "max_object_height",   _maxObjHeight );
     conf.getIfSet( "tiled",               _isTiled );
     conf.getIfSet( "max_texture_span",    _maxTexSpan );
-
+	conf.getIfSet( "material_url",		  _materialURI);
     conf.getIfSet( "texture_mode", "decal",    _texEnvMode, osg::TexEnv::DECAL );
     conf.getIfSet( "texture_mode", "modulate", _texEnvMode, osg::TexEnv::MODULATE );
     conf.getIfSet( "texture_mode", "replace",  _texEnvMode, osg::TexEnv::REPLACE );
@@ -92,7 +92,8 @@ SkinResource::getConfig() const
     conf.updateIfSet( "max_object_height",   _maxObjHeight );
     conf.updateIfSet( "tiled",               _isTiled );
     conf.updateIfSet( "max_texture_span",    _maxTexSpan );
-    
+	conf.updateIfSet( "material_url",		 _materialURI);
+
     conf.updateIfSet( "texture_mode", "decal",    _texEnvMode, osg::TexEnv::DECAL );
     conf.updateIfSet( "texture_mode", "modulate", _texEnvMode, osg::TexEnv::MODULATE );
     conf.updateIfSet( "texture_mode", "replace",  _texEnvMode, osg::TexEnv::REPLACE );
@@ -115,6 +116,12 @@ std::string
 SkinResource::getUniqueID() const
 {
     return imageURI()->full();
+}
+
+std::string 
+SkinResource::getUniqueMatID() const
+{
+	return materialURI()->full();
 }
 
 osg::Texture*
@@ -178,6 +185,14 @@ SkinResource::createStateSet(const osgDB::Options* readOptions) const
     return createStateSet(image.get());
 }
 
+bool 
+SkinResource::createMatStateSet(osg::ref_ptr<osg::StateSet>& output, const osgDB::Options* dbOptions)
+{
+	OE_DEBUG << LC << "Creating skin state set for " << materialURI()->full() << std::endl;
+	osg::ref_ptr<osg::Image> image = createMatImage(dbOptions);
+	return add2StateSet(output, image.get());
+}
+
 osg::StateSet*
 SkinResource::createStateSet( osg::Image* image ) const
 {
@@ -212,12 +227,47 @@ SkinResource::createStateSet( osg::Image* image ) const
     return stateSet;
 }
 
+bool
+SkinResource::add2StateSet(osg::ref_ptr<osg::StateSet>& output, osg::Image* image)
+{
+	if (image)
+	{
+#ifdef _DEBUG
+		int nty;
+#endif
+
+		osg::Texture* tex = createTexture(image);
+		if (tex)
+		{
+			int ntx = output->getNumTextureModeLists();
+			output->setTextureAttributeAndModes(ntx, tex, osg::StateAttribute::ON);
+#ifdef _DEBUG
+			nty = output->getNumTextureModeLists();
+#endif
+			if (_texEnvMode.isSet())
+			{
+				osg::TexEnv* texenv = new osg::TexEnv();
+				texenv = new osg::TexEnv();
+				texenv->setMode(*_texEnvMode);
+				output->setTextureAttributeAndModes(0, texenv, osg::StateAttribute::ON);
+			}
+
+			if (ImageUtils::hasAlphaChannel(image))
+			{
+				osg::BlendFunc* blendFunc = new osg::BlendFunc();
+				blendFunc->setFunction(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+				output->setAttributeAndModes(blendFunc, osg::StateAttribute::ON);
+				output->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+			}
+		}
+	}
+
+	return true;
+}
+
 osg::ref_ptr<osg::Image>
 SkinResource::createImage( const osgDB::Options* dbOptions ) const
 {
-    if (getStatus().isError())
-        return 0L;
-
     ReadResult result;
     if (_readOptions.isSet())
     {
@@ -229,14 +279,24 @@ SkinResource::createImage( const osgDB::Options* dbOptions ) const
     {
         result = _imageURI->readImage(dbOptions);
     }
-
-    if (result.failed())
-    {
-        Threading::ScopedMutexLock lock(_mutex);
-        if (_status.isOK())
-            _status = Status::Error(Status::ServiceUnavailable, "Failed to load resource image\n");
-    }
     return result.releaseImage();
+}
+
+osg::ref_ptr<osg::Image>
+SkinResource::createMatImage(const osgDB::Options* dbOptions) const
+{
+	ReadResult result;
+	if (_readOptions.isSet())
+	{
+		osg::ref_ptr<osgDB::Options> ro = Registry::cloneOrCreateOptions(dbOptions);
+		ro->setOptionString(Stringify() << _readOptions.get() << " " << ro->getOptionString());
+		result = _materialURI->readImage(ro.get());
+	}
+	else
+	{
+		result = _materialURI->readImage(dbOptions);
+	}
+	return result.releaseImage();
 }
 
 //---------------------------------------------------------------------------

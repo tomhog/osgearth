@@ -119,6 +119,11 @@ namespace osgEarth { namespace Features
          */
         const std::vector<const FeatureLevel*>& getLevels() const { return _lodmap; };
 
+	/**
+	 * Build a predefined set of features
+	 */
+		bool buildWorkingSet(osg::ref_ptr<osg::Group> &group, osg::ref_ptr<FeatureCursor>&WorkingSet, const GeoExtent& extent, FeatureProfile *Profile, const osgDB::Options* readOptions);
+
     public: // osg::Node
 
         virtual void traverse(osg::NodeVisitor& nv);
@@ -158,6 +163,14 @@ namespace osgEarth { namespace Features
             FeatureList&          workingSet, 
             const FilterContext&  contextPrototype,
             const osgDB::Options* readOptions);
+	    
+	osg::Group*  createStyleGroup(
+		const Style&  style,
+		osg::ref_ptr<FeatureCursor>&cursor,
+		FeatureIndexBuilder* index,
+		const GeoExtent &extent,
+		FeatureProfile *featureProfile,
+		const osgDB::Options* readOptions);
 
         void buildStyleGroups(
             const StyleSelector*  selector,
@@ -213,7 +226,7 @@ namespace osgEarth { namespace Features
         bool                             _dirty;
         bool                             _pendingUpdate;
         std::vector<const FeatureLevel*> _lodmap;
-        OpenThreads::ReentrantMutex      _clampableMutex;
+        OpenThreads::Mutex               _clampableMutex;
 
         osg::Group*                      _overlayInstalled;
         osg::ref_ptr<osg::Group>         _overlayPlaceholder;

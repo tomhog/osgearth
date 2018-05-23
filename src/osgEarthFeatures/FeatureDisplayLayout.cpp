@@ -71,6 +71,7 @@ _tileSizeFactor( 15.0f ),
 _minRange      ( 0.0f ),
 _maxRange      ( 0.0f ),
 _cropFeatures  ( false ),
+_profileTiles ( false ),
 _priorityOffset( 0.0f ),
 _priorityScale ( 1.0f ),
 _minExpiryTime ( 0.0f )
@@ -84,7 +85,8 @@ FeatureDisplayLayout::fromConfig( const Config& conf )
     conf.getIfSet( "tile_size",        _tileSize );
     conf.getIfSet( "tile_size_factor", _tileSizeFactor );
     conf.getIfSet( "crop_features",    _cropFeatures );
-    conf.getIfSet( "priority_offset",  _priorityOffset );
+	conf.getIfSet( "profile_tiling",  _profileTiles);
+	conf.getIfSet( "priority_offset",  _priorityOffset );
     conf.getIfSet( "priority_scale",   _priorityScale );
     conf.getIfSet( "min_expiry_time",  _minExpiryTime );
     conf.getIfSet( "min_range",        _minRange );
@@ -101,7 +103,8 @@ FeatureDisplayLayout::getConfig() const
     conf.addIfSet( "tile_size",        _tileSize );
     conf.addIfSet( "tile_size_factor", _tileSizeFactor );
     conf.addIfSet( "crop_features",    _cropFeatures );
-    conf.addIfSet( "priority_offset",  _priorityOffset );
+	conf.addIfSet( "profile_tiling",  _profileTiles );
+	conf.addIfSet( "priority_offset",  _priorityOffset );
     conf.addIfSet( "priority_scale",   _priorityScale );
     conf.addIfSet( "min_expiry_time",  _minExpiryTime );
     conf.addIfSet( "min_range",        _minRange );

@@ -123,6 +123,16 @@ namespace osgEarth { namespace Features
         optional<bool>& cropFeatures() { return _cropFeatures; }
         const optional<bool>& cropFeatures() const { return _cropFeatures; }
 
+	/**
+	 * Use Profile feature tileing, using this option will cause feature tiling to
+	 * adhear to the tileing key schema used in paging terrain. TFS sets up a top
+	 * level lod which is 1 tile and that tile may not conform to external tiled sources
+	 * such as Common DataBase (CDB) setting this flag fources a stricter adhearance to the 
+	 * profile settings and utilization to tile keys for feature paging
+	 */
+	 optional<bool>& profiletileing() { return _profileTiles; }
+	 const optional<bool>& profiletileing() const { return _profileTiles; }
+	 
         /**
          * Sets the offset that will be applied to the computed paging priority
          * of tiles in this layout. Adjusting this can affect the priority of this
@@ -176,6 +186,7 @@ namespace osgEarth { namespace Features
         optional<float> _minRange;
         optional<float> _maxRange;
         optional<bool>  _cropFeatures;
+	optional<bool>  _profileTiles;
         optional<float> _priorityOffset;
         optional<float> _priorityScale;
         optional<float> _minExpiryTime;
