@@ -680,7 +680,7 @@ GroundCoverLayer::Renderer::draw(osg::RenderInfo& ri, const DrawContext& tile, o
 
     geom->draw(ri);
 
-    ++ds._tilesDrawnThisFrame
+    ++ds._tilesDrawnThisFrame;
 }
 
 void
