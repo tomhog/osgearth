@@ -5,6 +5,8 @@ $GLSL_DEFAULT_PRECISION_FLOAT
 #pragma vp_entryPoint oe_GroundCover_VS_MODEL
 #pragma vp_location   vertex_model
 
+#pragma import_defines(OE_GROUNDCOVER_USE_NON_INSTANCED)
+
 uniform vec2 oe_GroundCover_numInstances;
 uniform vec3 oe_GroundCover_LL, oe_GroundCover_UR;
 
@@ -27,9 +29,15 @@ void oe_GroundCover_VS_MODEL(inout vec4 vertex_model)
 {
     // Instead of using oe_layer_tilec, generate the UV tile coordinates
     // based on the current instance number
+#ifdef OE_GROUNDCOVER_USE_NON_INSTANCED
+    int instanceID = gl_VertexID / 8;
+#else
+    int instanceID = gl_InstanceID;
+#endif
+
     vec2 offset = vec2(
-        float(gl_InstanceID % int(oe_GroundCover_numInstances.x)),
-        float(gl_InstanceID / int(oe_GroundCover_numInstances.y)));
+        float(instanceID % int(oe_GroundCover_numInstances.x)),
+        float(instanceID / int(oe_GroundCover_numInstances.y)));
 
     tileUV = vec4(offset/(oe_GroundCover_numInstances-1), 0, 1);
 
@@ -65,6 +73,7 @@ $GLSL_DEFAULT_PRECISION_FLOAT
 #pragma import_defines(OE_IS_SHADOW_CAMERA)
 #pragma import_defines(OE_GROUNDCOVER_MASK_SAMPLER)
 #pragma import_defines(OE_GROUNDCOVER_MASK_MATRIX)
+#pragma import_defines(OE_GROUNDCOVER_USE_NON_INSTANCED)
 
 // Input is 8 verts per object
 
@@ -224,6 +233,7 @@ void oe_GroundCover_VS(inout vec4 vertex_view)
 
     int which = gl_VertexID & 7; // mod8
 
+
 #ifdef OE_IS_SHADOW_CAMERA
 
     // For a shadow camera, draw the tree as a cross hatch model
@@ -311,7 +321,7 @@ void oe_GroundCover_VS(inout vec4 vertex_view)
             float blend = 0.25 + (noise[NOISE_RANDOM_2]*0.25);
 
             vp_Normal =
-                which == 0 || which == 2? mix(-tangentVector, faceNormalVector, blend) :
+                which == 0 || which == 2 ? mix(-tangentVector, faceNormalVector, blend) :
                                           mix( tangentVector, faceNormalVector, blend);
 
             oe_GroundCover_atlasIndex = float(billboard.atlasIndexSide);

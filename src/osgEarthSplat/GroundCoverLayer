@@ -169,6 +169,9 @@ namespace osgEarth { namespace Splat
             unsigned _LLUName, _URUName;
             unsigned _LLNormalUName, _URNormalUName;
 
+            // shared geom
+            static osg::buffered_object<osg::ref_ptr<osg::Geometry>> _geom;
+
             // DrawCallback API
             void preDraw(osg::RenderInfo& ri, osg::ref_ptr<osg::Referenced>& out_data);
             void draw(osg::RenderInfo& ri, const DrawContext& di, osg::Referenced* data);

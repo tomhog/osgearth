@@ -47,7 +47,8 @@ REGISTER_OSGEARTH_LAYER(splat_groundcover, GroundCoverLayer);
 // billboards. Undef this to use a VS-only implementation (which is slower
 // and still needs some work with the colors, etc.) but could be useful if
 // GS are extremely slow or unavailable on your target platform.
-#define USE_GEOMETRY_SHADER
+//#define USE_GEOMETRY_SHADER
+//#define USE_INSTANCE_VERTEX_SHADER
 
 //........................................................................
 
@@ -461,6 +462,10 @@ GroundCoverLayer::buildStateSets()
                     zoneStateSet->setDefine("OE_GROUNDCOVER_USE_TOP_BILLBOARDS");
                 }
 
+#ifndef USE_INSTANCE_VERTEX_SHADER
+                zoneStateSet->setDefine("OE_GROUNDCOVER_USE_NON_INSTANCED");
+#endif
+
                 OE_INFO << LC << "Established zone \"" << zone->getName() << "\" at LOD " << getLOD() << "\n";
 
                 osg::Texture* tex = groundCover->createTexture();
@@ -532,13 +537,6 @@ GroundCoverLayer::releaseGLObjects(osg::State* state) const
 GroundCoverLayer::Renderer::DrawState::DrawState()
 {
     const unsigned tileSize = 132u; //93u;
-    unsigned numInstances = tileSize*tileSize;
-
-    _geom = new osg::Geometry();
-    _geom->setDataVariance(osg::Object::STATIC);
-
-    static const GLubyte indices[12] = { 0,1,2,1,2,3, 4,5,6,5,6,7 };
-    _geom->addPrimitiveSet(new osg::DrawElementsUByte(GL_TRIANGLES, 12, &indices[0], numInstances));
 
     // initialize all the uniform locations - we will fetch these at draw time
     // when the program is active
@@ -560,12 +558,14 @@ GroundCoverLayer::Renderer::Renderer()
     _URUName = osg::Uniform::getNameID("oe_GroundCover_UR");
 
     _drawStateBuffer.resize(64u);
+    if(_geom.size() == 0) _geom.resize(64u);
 }
 
 void
 GroundCoverLayer::Renderer::preDraw(osg::RenderInfo& ri, osg::ref_ptr<osg::Referenced>& data)
 {
     DrawState& ds = _drawStateBuffer[ri.getContextID()];
+    osg::ref_ptr<osg::Geometry>& geom = _geom[ri.getContextID()];
 
     ds._tilesDrawnThisFrame = 0;
 
@@ -578,9 +578,41 @@ GroundCoverLayer::Renderer::preDraw(osg::RenderInfo& ri, osg::ref_ptr<osg::Refer
 #endif
 
     // Testing - need this for glMultiDrawElementsIndirect
-    //osg::PrimitiveSet* de = ds._geom->getPrimitiveSet(0);
+    //osg::PrimitiveSet* de = geom->getPrimitiveSet(0);
     //osg::GLBufferObject* ebo = de->getOrCreateGLBufferObject(ri.getContextID());
     //ri.getState()->bindElementBufferObject(ebo);
+
+    if (!geom.valid())
+    {
+        const unsigned tileSize = 132u; //93u;
+        unsigned numInstances = tileSize * tileSize;
+
+        geom = new osg::Geometry();
+        geom->setDataVariance(osg::Object::STATIC);
+        geom->setUseVertexArrayObject(false);
+        geom->setUseVertexBufferObjects(true);
+
+    #ifdef USE_INSTANCE_VERTEX_SHADER
+        static const GLubyte indices[12] = { 0,1,2,1,2,3, 4,5,6,5,6,7 };
+        geom->addPrimitiveSet(new osg::DrawElementsUByte(GL_TRIANGLES, 12, &indices[0], numInstances));
+    #else
+        static const unsigned int indiciesPerInstance = 12;
+        static const unsigned int totalIndicies = numInstances * indiciesPerInstance;
+        std::vector<GLuint> indices;
+        indices.reserve(totalIndicies);
+        for (unsigned int i = 0; i < numInstances; i++)
+        {
+            unsigned int offset = i * 8;
+            std::vector<GLuint> instanceIndicies = { (GLuint)(0 + offset), (GLuint)(1 + offset), (GLuint)(2 + offset), (GLuint)(1 + offset), (GLuint)(2 + offset), (GLuint)(3 + offset),  (GLuint)(4 + offset), (GLuint)(5 + offset), (GLuint)(6 + offset), (GLuint)(5 + offset), (GLuint)(6 + offset), (GLuint)(7 + offset) };
+            indices.insert(indices.begin() + (i * indiciesPerInstance), instanceIndicies.begin(), instanceIndicies.end());
+        }
+        geom->addPrimitiveSet(new osg::DrawElementsUInt(GL_TRIANGLES, totalIndicies, indices.data(), 0));
+
+        unsigned int numverts = numInstances * 8;
+        osg::Vec3Array* coords = new osg::Vec3Array(numverts);
+        geom->setVertexArray(coords);
+    #endif
+    }
 }
 
 namespace
@@ -594,10 +626,13 @@ namespace
     };
 }
 
+osg::buffered_object<osg::ref_ptr<osg::Geometry>> GroundCoverLayer::Renderer::_geom;
+
 void
 GroundCoverLayer::Renderer::draw(osg::RenderInfo& ri, const DrawContext& tile, osg::Referenced* data)
 {
     DrawState& ds = _drawStateBuffer[ri.getContextID()];
+    osg::Geometry* geom = _geom[ri.getContextID()];
     osg::GLExtensions* ext = osg::GLExtensions::Get(ri.getContextID(), true);
 
     // find the uniform location for our uniforms if necessary.
@@ -641,21 +676,25 @@ GroundCoverLayer::Renderer::draw(osg::RenderInfo& ri, const DrawContext& tile, o
     }
 
     // draw the instanced billboard geometry:
-    ds._geom->draw(ri);
+    //ds._geom->draw(ri);
 
-    ++ds._tilesDrawnThisFrame;
+    geom->draw(ri);
 }
 
 void
 GroundCoverLayer::Renderer::postDraw(osg::RenderInfo& ri, osg::Referenced* data)
 {
-    // nop
+#if OSG_VERSION_GREATER_OR_EQUAL(3,5,6)
+// Need to unbind any VAO since we'll be doing straight GL calls
+    ri.getState()->unbindVertexArrayObject();
+#endif
 }
 
 void
 GroundCoverLayer::Renderer::resizeGLObjectBuffers(unsigned maxSize)
 {
     _drawStateBuffer.resize(osg::maximum(maxSize, _drawStateBuffer.size()));
+    _geom.resize(osg::maximum(maxSize, _geom.size()));
 }
 
 void
@@ -663,6 +702,11 @@ GroundCoverLayer::Renderer::releaseGLObjects(osg::State* state) const
 {
     for(unsigned i=0; i<_drawStateBuffer.size(); ++i)
     {
-        _drawStateBuffer[i]._geom->releaseGLObjects(state);
+        //_drawStateBuffer[i]._geom->releaseGLObjects(state);
+    }
+
+    for (unsigned i = 0; i < _geom.size(); ++i)
+    {
+        _geom[i]->releaseGLObjects(state);
     }
 }
